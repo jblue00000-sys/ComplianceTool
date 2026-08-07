@@ -1,0 +1,597 @@
+#!/usr/bin/env python3
+# fm-context-index - local semantic index over this firstmate home's
+# conversational and operational context.
+#
+# Indexes Claude Code session transcripts for this home, data/*.md records,
+# per-task briefs and scout reports, and state/*.status history into a
+# DEDICATED local Qdrant instance, then answers semantic queries with
+# provenance. Ingestion is incremental and idempotent: a chunk's point id is
+# derived from its content hash, so re-running skips everything unchanged.
+#
+# Privacy boundary: nothing leaves this machine. Embeddings are computed by a
+# local sentence-transformers model and stored in a firstmate-only collection on
+# a firstmate-only Qdrant instance. The script refuses to talk to the Qdrant
+# ports another project's RAG serves (6333/6334); see docs/context-index.md.
+#
+# Usage:
+#   fm-context-index index [--dry-run] [--json] [--kind KIND]...
+#   fm-context-index search QUERY [--k N] [--kind KIND]... [--json]
+#   fm-context-index --help
+#
+# Environment:
+#   FM_HOME                  firstmate home to index (default: the repo root)
+#   FM_CONTEXT_QDRANT_URL    dedicated Qdrant base URL (default http://127.0.0.1:6631)
+#   FM_CONTEXT_COLLECTION    collection name (default fm-context)
+#   FM_CONTEXT_TRANSCRIPTS   glob for Claude Code transcripts of this home
+#   FM_CONTEXT_MODEL         local sentence-transformers model id
+#
+# Setup, start/stop, and dependency notes: docs/context-index.md.
+"""Local semantic context index for one firstmate home."""
+
+from __future__ import annotations
+
+import argparse
+import datetime
+import glob
+import hashlib
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.request
+import uuid
+from pathlib import Path
+
+DEFAULT_URL = "http://127.0.0.1:6631"
+DEFAULT_COLLECTION = "fm-context"
+DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+# Ports served by the application RAG instance this index must never touch.
+FOREIGN_QDRANT_PORTS = (6333, 6334)
+
+# Deterministic namespace so a chunk's id depends only on its content hash.
+POINT_NAMESPACE = uuid.UUID("6f0f5a2e-0a6d-5d61-9a0a-6d6f6e746578")
+
+KINDS = ("transcript", "captain", "learning", "record", "report", "brief", "status")
+
+TARGET_TOKENS = 750
+OVERLAP_TOKENS = 100
+MIN_CHUNK_CHARS = 40
+
+EMBED_BATCH = 64
+UPSERT_BATCH = 128
+LOOKUP_BATCH = 256
+
+# Transcript lines that carry harness plumbing rather than conversation.
+NOISE_PREFIXES = (
+    "<command-name>",
+    "<command-message>",
+    "<local-command-stdout>",
+    "<bash-input>",
+    "<bash-stdout>",
+    "Caveat: The messages below",
+)
+
+
+class ContextIndexError(Exception):
+    """One deterministic, operator-facing failure."""
+
+
+# --- text handling ---------------------------------------------------------
+
+
+def estimate_tokens(text: str) -> int:
+    """Approximate token count without pulling in a tokenizer dependency."""
+    return max(1, (len(text) + 3) // 4)
+
+
+def chunk_text(text: str, target_tokens: int = TARGET_TOKENS,
+               overlap_tokens: int = OVERLAP_TOKENS) -> list:
+    """Split text into overlapping chunks of roughly target_tokens each.
+
+    Splitting happens on line boundaries so a chunk stays readable as a
+    snippet. A single oversized line is emitted on its own rather than cut
+    mid-word.
+    """
+    if target_tokens < 1:
+        raise ContextIndexError("target_tokens must be positive")
+    if overlap_tokens < 0 or overlap_tokens >= target_tokens:
+        raise ContextIndexError("overlap_tokens must be >= 0 and < target_tokens")
+    lines = text.splitlines()
+    chunks = []
+    current: list = []
+    current_tokens = 0
+    for line in lines:
+        line_tokens = estimate_tokens(line)
+        if current and current_tokens + line_tokens > target_tokens:
+            chunks.append("\n".join(current).strip())
+            carry: list = []
+            carried = 0
+            for prev in reversed(current):
+                prev_tokens = estimate_tokens(prev)
+                if carried + prev_tokens > overlap_tokens:
+                    break
+                carry.insert(0, prev)
+                carried += prev_tokens
+            current = carry
+            current_tokens = carried
+        current.append(line)
+        current_tokens += line_tokens
+    if current:
+        chunks.append("\n".join(current).strip())
+    return [c for c in chunks if len(c) >= MIN_CHUNK_CHARS]
+
+
+def content_hash(kind: str, source: str, text: str) -> str:
+    """Stable content hash for one chunk, including where it came from."""
+    digest = hashlib.sha256()
+    digest.update(kind.encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(source.encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(text.encode("utf-8"))
+    return digest.hexdigest()
+
+
+def point_id(chunk_hash: str) -> str:
+    """Deterministic Qdrant point id derived from the content hash."""
+    return str(uuid.uuid5(POINT_NAMESPACE, chunk_hash))
+
+
+def make_chunks(kind: str, source: str, text: str, **payload) -> list:
+    """Build the payload records for one source document."""
+    records = []
+    for position, body in enumerate(chunk_text(text)):
+        chunk_hash = content_hash(kind, source, body)
+        record = {
+            "id": point_id(chunk_hash),
+            "hash": chunk_hash,
+            "kind": kind,
+            "source": source,
+            "chunk": position,
+            "text": body,
+        }
+        for key, value in payload.items():
+            if value is not None:
+                record[key] = value
+        records.append(record)
+    return records
+
+
+def select_new(records: list, existing_ids) -> tuple:
+    """Split records into (new, already-indexed), deduplicating within the batch."""
+    existing = set(existing_ids)
+    new = []
+    seen = set()
+    skipped = 0
+    for record in records:
+        if record["id"] in existing or record["id"] in seen:
+            skipped += 1
+            continue
+        seen.add(record["id"])
+        new.append(record)
+    return new, skipped
+
+
+# --- sources ---------------------------------------------------------------
+
+
+def _clean_text(value) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = re.sub(r"<system-reminder>.*?</system-reminder>", "", value, flags=re.DOTALL)
+    text = text.strip()
+    if not text:
+        return ""
+    for prefix in NOISE_PREFIXES:
+        if text.startswith(prefix):
+            return ""
+    return text
+
+
+def message_text(message) -> str:
+    """Extract conversational text from one transcript message, skipping tool noise."""
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    if isinstance(content, str):
+        return _clean_text(content)
+    if not isinstance(content, list):
+        return ""
+    parts = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") not in ("text", "thinking"):
+            continue
+        piece = _clean_text(block.get("text") or block.get("thinking"))
+        if piece:
+            parts.append(piece)
+    return "\n\n".join(parts)
+
+
+def transcript_records(pattern: str) -> list:
+    """Chunk the user and assistant turns of every matching transcript file."""
+    records = []
+    for path in sorted(glob.glob(os.path.expanduser(pattern))):
+        session = Path(path).stem
+        turns = []
+        first_ts = None
+        try:
+            handle = open(path, "r", encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        with handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("type") not in ("user", "assistant"):
+                    continue
+                text = message_text(entry.get("message"))
+                if not text:
+                    continue
+                timestamp = entry.get("timestamp")
+                if first_ts is None:
+                    first_ts = timestamp
+                role = entry.get("type")
+                turns.append("%s: %s" % (role, text))
+        if not turns:
+            continue
+        records.extend(make_chunks(
+            "transcript",
+            path,
+            "\n\n".join(turns),
+            session=session,
+            timestamp=first_ts,
+            role="conversation",
+        ))
+    return records
+
+
+def _file_timestamp(path: Path):
+    try:
+        stamp = datetime.datetime.utcfromtimestamp(path.stat().st_mtime)
+    except OSError:
+        return None
+    return stamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _read(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def data_records(home: Path) -> list:
+    """Chunk this home's durable records: captain prefs, learnings, registries."""
+    records = []
+    for path in sorted((home / "data").glob("*.md")):
+        name = path.name
+        if name in ("captain.md", "captain-shared.md"):
+            kind = "captain"
+        elif name == "learnings.md":
+            kind = "learning"
+        else:
+            kind = "record"
+        text = _read(path)
+        if not text.strip():
+            continue
+        records.extend(make_chunks(
+            kind, str(path), text, timestamp=_file_timestamp(path), role="firstmate"))
+    return records
+
+
+def task_records(home: Path) -> list:
+    """Chunk per-task scout reports and crewmate briefs."""
+    records = []
+    for name, kind in (("report.md", "report"), ("brief.md", "brief")):
+        for path in sorted((home / "data").glob("*/" + name)):
+            text = _read(path)
+            if not text.strip():
+                continue
+            records.extend(make_chunks(
+                kind,
+                str(path),
+                text,
+                task=path.parent.name,
+                timestamp=_file_timestamp(path),
+                role="crewmate" if kind == "report" else "firstmate",
+            ))
+    return records
+
+
+def status_records(home: Path) -> list:
+    """Chunk each task's status history as one document per task."""
+    records = []
+    for path in sorted((home / "state").glob("*.status")):
+        text = _read(path)
+        if not text.strip():
+            continue
+        records.extend(make_chunks(
+            "status",
+            str(path),
+            text,
+            task=path.name[: -len(".status")],
+            timestamp=_file_timestamp(path),
+            role="crewmate",
+        ))
+    return records
+
+
+def collect(home: Path, transcripts: str, kinds) -> list:
+    """Gather every requested source kind into one record list."""
+    wanted = set(kinds) if kinds else set(KINDS)
+    records = []
+    if "transcript" in wanted:
+        records.extend(transcript_records(transcripts))
+    records.extend(r for r in data_records(home) if r["kind"] in wanted)
+    records.extend(r for r in task_records(home) if r["kind"] in wanted)
+    if "status" in wanted:
+        records.extend(status_records(home))
+    return records
+
+
+# --- dedicated Qdrant instance --------------------------------------------
+
+
+def resolve_url(url: str) -> str:
+    """Return the dedicated instance URL, refusing another project's Qdrant."""
+    url = url.rstrip("/")
+    match = re.search(r":(\d+)$", url)
+    port = int(match.group(1)) if match else 6333
+    if port in FOREIGN_QDRANT_PORTS:
+        raise ContextIndexError(
+            "refusing to use %s: port %d belongs to the application's own Qdrant. "
+            "firstmate uses its own instance (docs/context-index.md)." % (url, port))
+    return url
+
+
+class Qdrant:
+    """Minimal REST client for the dedicated instance; no extra dependency."""
+
+    def __init__(self, url: str, collection: str, timeout: float = 30.0):
+        self.url = resolve_url(url)
+        self.collection = collection
+        self.timeout = timeout
+
+    def _call(self, method: str, path: str, body=None):
+        data = None
+        headers = {}
+        if body is not None:
+            data = json.dumps(body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        request = urllib.request.Request(
+            self.url + path, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", "replace")[:400]
+            raise ContextIndexError(
+                "qdrant %s %s failed: %s %s" % (method, path, error.code, detail))
+        except urllib.error.URLError as error:
+            raise ContextIndexError(
+                "cannot reach the firstmate context index at %s (%s). "
+                "Start it with: docker compose -f docs/examples/fm-context-qdrant.compose.yml up -d"
+                % (self.url, error.reason))
+
+    def ensure_collection(self, dim: int) -> None:
+        try:
+            self._call("GET", "/collections/%s" % self.collection)
+            return
+        except ContextIndexError as error:
+            if "404" not in str(error):
+                raise
+        self._call("PUT", "/collections/%s" % self.collection, {
+            "vectors": {"size": dim, "distance": "Cosine"},
+        })
+
+    def existing_ids(self, ids) -> set:
+        found = set()
+        ids = list(ids)
+        for start in range(0, len(ids), LOOKUP_BATCH):
+            batch = ids[start:start + LOOKUP_BATCH]
+            result = self._call("POST", "/collections/%s/points" % self.collection, {
+                "ids": batch, "with_payload": False, "with_vector": False,
+            })
+            for point in result.get("result") or []:
+                found.add(str(point.get("id")))
+        return found
+
+    def upsert(self, points) -> None:
+        self._call("PUT", "/collections/%s/points?wait=true" % self.collection,
+                   {"points": points})
+
+    def search(self, vector, limit: int, kinds):
+        body = {"vector": vector, "limit": limit, "with_payload": True}
+        if kinds:
+            body["filter"] = {
+                "must": [{"key": "kind", "match": {"any": list(kinds)}}],
+            }
+        result = self._call(
+            "POST", "/collections/%s/points/search" % self.collection, body)
+        return result.get("result") or []
+
+    def drop(self) -> None:
+        self._call("DELETE", "/collections/%s" % self.collection)
+
+
+# --- local embedding model -------------------------------------------------
+
+
+class Embedder:
+    """Local sentence-transformers model; never a remote embedding service."""
+
+    def __init__(self, model_id: str):
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            raise ContextIndexError(
+                "sentence-transformers is not installed. Install it locally with: "
+                "pip3 install sentence-transformers (docs/context-index.md)")
+        self.model = SentenceTransformer(model_id)
+        self.dim = int(self.model.get_sentence_embedding_dimension())
+
+    def encode(self, texts) -> list:
+        vectors = self.model.encode(
+            list(texts), batch_size=EMBED_BATCH, show_progress_bar=False,
+            normalize_embeddings=True)
+        return [[float(value) for value in vector] for vector in vectors]
+
+
+# --- commands --------------------------------------------------------------
+
+
+def payload_of(record: dict) -> dict:
+    return {key: value for key, value in record.items() if key != "id"}
+
+
+def command_index(args) -> int:
+    home = Path(args.home).resolve()
+    records = collect(home, args.transcripts, args.kind)
+    if args.dry_run:
+        if args.json:
+            json.dump({"chunks": records, "count": len(records)}, sys.stdout, indent=2)
+            sys.stdout.write("\n")
+        else:
+            counts = {}
+            for record in records:
+                counts[record["kind"]] = counts.get(record["kind"], 0) + 1
+            print("planned: %d chunks (%s)" % (
+                len(records),
+                ", ".join("%s=%d" % item for item in sorted(counts.items())) or "none"))
+        return 0
+
+    client = Qdrant(args.url, args.collection)
+    embedder = Embedder(args.model)
+    client.ensure_collection(embedder.dim)
+    existing = client.existing_ids(record["id"] for record in records)
+    new, skipped = select_new(records, existing)
+
+    sources = set()
+    for start in range(0, len(new), UPSERT_BATCH):
+        batch = new[start:start + UPSERT_BATCH]
+        vectors = embedder.encode(record["text"] for record in batch)
+        client.upsert([
+            {"id": record["id"], "vector": vector, "payload": payload_of(record)}
+            for record, vector in zip(batch, vectors)
+        ])
+        sources.update(record["source"] for record in batch)
+
+    summary = {
+        "collection": args.collection,
+        "url": client.url,
+        "chunks_seen": len(records),
+        "chunks_new": len(new),
+        "chunks_unchanged": skipped,
+        "sources_written": len(sources),
+    }
+    if args.json:
+        json.dump(summary, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+    else:
+        print("indexed %d new chunks, %d already current (%d seen) into %s at %s"
+              % (summary["chunks_new"], summary["chunks_unchanged"],
+                 summary["chunks_seen"], summary["collection"], summary["url"]))
+    return 0
+
+
+def snippet(text: str, width: int = 320) -> str:
+    flat = " ".join(text.split())
+    return flat if len(flat) <= width else flat[: width - 1] + "…"
+
+
+def command_search(args) -> int:
+    client = Qdrant(args.url, args.collection)
+    embedder = Embedder(args.model)
+    vector = embedder.encode([args.query])[0]
+    hits = client.search(vector, args.k, args.kind)
+    if args.json:
+        json.dump({"query": args.query, "hits": [
+            {"score": hit.get("score"), "payload": hit.get("payload")} for hit in hits
+        ]}, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
+    if not hits:
+        print("no matches in %s" % args.collection)
+        return 0
+    for rank, hit in enumerate(hits, start=1):
+        payload = hit.get("payload") or {}
+        stamp = (payload.get("timestamp") or "")[:10] or "-"
+        task = payload.get("task") or payload.get("session") or "-"
+        print("%d. %.3f  %-10s %s  task=%s" % (
+            rank, hit.get("score") or 0.0, payload.get("kind", "?"), stamp, task))
+        print("   %s" % payload.get("source", "?"))
+        print("   %s" % snippet(payload.get("text", "")))
+        if rank != len(hits):
+            print("")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    default_home = os.environ.get(
+        "FM_HOME", str(Path(__file__).resolve().parents[1]))
+    default_transcripts = os.environ.get(
+        "FM_CONTEXT_TRANSCRIPTS",
+        "~/.claude/projects/-Users-rob-Documents-firstmate/*.jsonl")
+    parser = argparse.ArgumentParser(
+        prog="fm-context-index",
+        description="Local semantic index over one firstmate home's context.",
+        epilog="Operator notes, privacy boundary, and setup: docs/context-index.md")
+    parser.add_argument("--url", default=os.environ.get(
+        "FM_CONTEXT_QDRANT_URL", DEFAULT_URL),
+        help="dedicated Qdrant base URL (default %s)" % DEFAULT_URL)
+    parser.add_argument("--collection", default=os.environ.get(
+        "FM_CONTEXT_COLLECTION", DEFAULT_COLLECTION),
+        help="collection name (default %s)" % DEFAULT_COLLECTION)
+    parser.add_argument("--model", default=os.environ.get(
+        "FM_CONTEXT_MODEL", DEFAULT_MODEL),
+        help="local sentence-transformers model (default %s)" % DEFAULT_MODEL)
+    sub = parser.add_subparsers(dest="command")
+
+    index = sub.add_parser("index", help="ingest this home's context incrementally")
+    index.add_argument("--home", default=default_home,
+                       help="firstmate home to index (default %s)" % default_home)
+    index.add_argument("--transcripts", default=default_transcripts,
+                       help="glob for this home's Claude Code transcripts")
+    index.add_argument("--kind", action="append", choices=KINDS,
+                       help="restrict ingestion to a kind (repeatable)")
+    index.add_argument("--dry-run", action="store_true",
+                       help="print the planned chunks without embedding or writing")
+    index.add_argument("--json", action="store_true", help="machine-readable output")
+    index.set_defaults(func=command_index)
+
+    search = sub.add_parser("search", help="semantic search with provenance")
+    search.add_argument("query")
+    search.add_argument("--k", type=int, default=8, help="results to return (default 8)")
+    search.add_argument("--kind", action="append", choices=KINDS,
+                        help="restrict results to a kind (repeatable)")
+    search.add_argument("--json", action="store_true", help="machine-readable output")
+    search.set_defaults(func=command_search)
+    return parser
+
+
+def main(argv) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if not getattr(args, "func", None):
+        parser.print_help()
+        return 2
+    try:
+        return args.func(args)
+    except ContextIndexError as error:
+        sys.stderr.write("fm-context-index: %s\n" % error)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

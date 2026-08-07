@@ -1,0 +1,23 @@
+# Dedicated Qdrant instance for firstmate's local context index (bin/fm-context-index).
+# It is deliberately separate from any other Qdrant on this machine: its own
+# container name, its own pinned image, its own localhost-only port, and its own
+# named volume, so firstmate never reads or writes another project's vectors.
+#
+#   docker compose -f docs/examples/fm-context-qdrant.compose.yml up -d
+#   docker compose -f docs/examples/fm-context-qdrant.compose.yml down
+#
+# See docs/context-index.md for the full operator notes.
+services:
+  fm-context-qdrant:
+    image: qdrant/qdrant:v1.18.3
+    container_name: fm-context-qdrant
+    restart: unless-stopped
+    ports:
+      # Bound to loopback only: this index never leaves the machine.
+      - "127.0.0.1:6631:6333"
+    volumes:
+      - fm-context-qdrant-storage:/qdrant/storage
+
+volumes:
+  fm-context-qdrant-storage:
+    name: fm-context-qdrant-storage
