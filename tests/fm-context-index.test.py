@@ -124,6 +124,13 @@ class TranscriptExtractionTest(unittest.TestCase):
         ]}
         self.assertEqual(INDEX.message_text(message), "running the tests now")
 
+    def test_thinking_blocks_are_skipped(self):
+        message = {"content": [
+            {"type": "thinking", "thinking": "half-formed scratch reasoning"},
+            {"type": "text", "text": "the tests pass"},
+        ]}
+        self.assertEqual(INDEX.message_text(message), "the tests pass")
+
     def test_system_reminders_are_stripped(self):
         message = {"content": [
             {"type": "text",

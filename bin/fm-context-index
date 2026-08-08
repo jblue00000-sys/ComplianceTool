@@ -203,9 +203,9 @@ def message_text(message) -> str:
     for block in content:
         if not isinstance(block, dict):
             continue
-        if block.get("type") not in ("text", "thinking"):
+        if block.get("type") != "text":
             continue
-        piece = _clean_text(block.get("text") or block.get("thinking"))
+        piece = _clean_text(block.get("text"))
         if piece:
             parts.append(piece)
     return "\n\n".join(parts)
@@ -258,7 +258,9 @@ def transcript_records(pattern: str) -> list:
 
 def _file_timestamp(path: Path):
     try:
-        stamp = datetime.datetime.utcfromtimestamp(path.stat().st_mtime)
+        stamp = datetime.datetime.fromtimestamp(
+            path.stat().st_mtime, tz=datetime.timezone.utc
+        )
     except OSError:
         return None
     return stamp.strftime("%Y-%m-%dT%H:%M:%SZ")
