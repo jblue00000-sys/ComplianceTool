@@ -10,6 +10,12 @@
 
 FM_STARTUP_MEMORY_BUDGET_FILE="startup-memory-budget"
 FM_STARTUP_MEMORY_BUDGET_DEFAULT="7500"
+# Ceiling for the tracked doctrine/ half of the startup prompt-memory surface.
+# It is a repository constant rather than per-home configuration: doctrine
+# changes only through the firstmate PR path, so the ceiling belongs where that
+# path reviews it.  Same value as the per-home default so there is one number.
+# shellcheck disable=SC2034 # Public constant consumed by bin/fm-startup-memory-budget.sh after sourcing.
+FM_STARTUP_MEMORY_DOCTRINE_CEILING="7500"
 FM_STARTUP_MEMORY_BUDGET_ERROR=""
 FM_STARTUP_MEMORY_BUDGET_VALUE=""
 FM_STARTUP_MEMORY_MEASURE_BYTES=""

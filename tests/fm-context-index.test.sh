@@ -7,7 +7,8 @@
 #   2. CLI contract - help, per-home identity, the home-derived transcript glob,
 #      the documented start command delivering every compose variable and the
 #      refusal to publish one containing whitespace, planned-chunk inventory
-#      over a fixture home, per-kind counts,
+#      over a fixture home, per-kind counts, the tracked doctrine/ read from
+#      the code root and indexed as this home's own records,
 #      the warning for a transcript glob that matched nothing, kind filtering,
 #      provenance metadata, and the refusal to touch the application Qdrant on
 #      6333/6334.
@@ -332,6 +333,86 @@ print(sorted({c["kind"] for c in json.load(open(sys.argv[1]))["chunks"]}))' "$SC
     "['status']"
 else
   fail "kind filtering restricts ingestion"
+fi
+
+# --- tracked doctrine is indexed as this home's own records ----------------
+#
+# Captain knowledge promoted out of data/captain.md and data/learnings.md into
+# tracked doctrine/ must stay reachable by the same search, or it gets
+# re-derived. It is read from the code root but must never widen the per-home
+# store boundary: this home's identity, this home's collection, nothing else's.
+# These run in the dry-run planner, so they need no embedding dependency.
+
+DOCTRINE_ROOT="$SCRATCH/doctrine-root"
+mkdir -p "$DOCTRINE_ROOT/doctrine"
+fixture_body doctrine-principle > "$DOCTRINE_ROOT/doctrine/captain-principles.md"
+fixture_body doctrine-learning > "$DOCTRINE_ROOT/doctrine/operational-learnings.md"
+
+doctrine_plan() {  # <root> <home> ; prints the plan JSON
+  FM_ROOT_OVERRIDE="$1" "$TOOL" index --home "$2" \
+    --transcripts "$SCRATCH/no-sessions/*.jsonl" --dry-run --json 2>/dev/null
+}
+
+query_doctrine() {  # <plan file> <python expression over `chunks`>
+  python3 - "$1" "$2" <<'PY'
+import json
+import sys
+
+chunks = json.load(open(sys.argv[1]))["chunks"]
+print(eval(sys.argv[2], {"chunks": chunks}))
+PY
+}
+
+doctrine_plan "$DOCTRINE_ROOT" "$HOME_DIR" > "$SCRATCH/plan-doctrine.json"
+
+check "tracked doctrine is classified like the local files it is the base for" \
+  "$(query_doctrine "$SCRATCH/plan-doctrine.json" \
+    'sorted({(c["source"].rsplit("/", 1)[1], c["kind"]) for c in chunks if "/doctrine/" in c["source"]})')" \
+  "[('captain-principles.md', 'captain'), ('operational-learnings.md', 'learning')]"
+
+check "doctrine chunks are stamped with the home that indexed them" \
+  "$(query_doctrine "$SCRATCH/plan-doctrine.json" \
+    'sorted({c["home"] for c in chunks if "/doctrine/" in c["source"]})')" \
+  "['$HOME_PATH']"
+
+# Two homes reading the same clone's doctrine still index into their own
+# stores: the point ids must not collapse onto each other.
+doctrine_plan "$DOCTRINE_ROOT" "$OTHER_HOME_DIR" > "$SCRATCH/plan-doctrine-other.json"
+check "the same doctrine indexed by another home gets different point ids" \
+  "$(python3 - "$SCRATCH/plan-doctrine.json" "$SCRATCH/plan-doctrine-other.json" <<'PY'
+import json
+import sys
+
+
+def ids(path):
+    return {c["id"] for c in json.load(open(path))["chunks"]
+            if "/doctrine/" in c["source"]}
+
+
+mine, other = ids(sys.argv[1]), ids(sys.argv[2])
+print(bool(mine) and bool(other) and mine.isdisjoint(other))
+PY
+)" "True"
+
+check "restricting to one kind restricts doctrine with it" \
+  "$(FM_ROOT_OVERRIDE="$DOCTRINE_ROOT" "$TOOL" index --home "$HOME_DIR" \
+      --transcripts "$SCRATCH/no-sessions/*.jsonl" --dry-run --json --kind learning |
+    python3 -c '
+import json, sys
+chunks = json.load(sys.stdin)["chunks"]
+sources = {c["source"] for c in chunks if "/doctrine/" in c["source"]}
+print(sorted(s.rsplit("/", 1)[1] for s in sources))')" \
+  "['operational-learnings.md']"
+
+# A clone that carries no doctrine/ is not an error: it indexes the rest.
+mkdir -p "$SCRATCH/rootless"
+if doctrine_plan "$SCRATCH/rootless" "$HOME_DIR" > "$SCRATCH/plan-nodoctrine.json"; then
+  check "a clone with no doctrine/ still indexes everything else" \
+    "$(query_doctrine "$SCRATCH/plan-nodoctrine.json" \
+      'not any("/doctrine/" in c["source"] for c in chunks) and len(chunks) > 0')" \
+    "True"
+else
+  fail "a clone with no doctrine/ still indexes everything else"
 fi
 
 if "$TOOL" index --home "$HOME_DIR" --kind nonsense --dry-run >/dev/null 2>&1; then

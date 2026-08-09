@@ -5,6 +5,9 @@
 #
 # Coverage:
 #   - absent-file markers vs empty-but-present files in the context digest
+#   - tracked doctrine/ reaching a home with a completely empty data/ from the
+#     code root, ahead of the local file each one is the universal base for,
+#     with every tracked doctrine file loaded rather than a named two
 #   - the lock-refusal read-only path: banner leads, every mutating step is
 #     skipped (including bootstrap's five mutating sweeps, verified by their
 #     ABSENCE), the digest still completes
@@ -38,6 +41,9 @@ set -u
 
 SESSION_START="$ROOT/bin/fm-session-start.sh"
 BASE_PATH=${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}
+# The rule the digest underlines every file label with, which is what makes a
+# label line identifiable as structure rather than as printed file content.
+SESSION_START_SUBRULE=$(printf -- '-%.0s' $(seq 1 80))
 TMP_ROOT=$(fm_test_tmproot fm-session-start-tests)
 SESSION_START_SECOND_MATE_ID="fmtest-sm-${TMP_ROOT##*.}"
 SESSION_START_SECOND_MATE_TMP="/tmp/fm-$SESSION_START_SECOND_MATE_ID"
@@ -701,16 +707,146 @@ EOF
   assert_contains "$out" "data/secondmates.md" "digest did not label the secondmates.md section"
   assert_contains "$out" "data/learnings.md" "digest did not label the learnings.md section"
 
-  # Exactly four context ABSENT markers (secondmates.md, captain-shared.md,
-  # learnings.md; backlog.md is covered by its own test) - and the
-  # present-but-empty captain.md must NOT print ABSENT.
+  # Exactly six context ABSENT markers (secondmates.md, captain-shared.md,
+  # learnings.md, both doctrine files - this world's code root is a bare git
+  # repo with no doctrine/ - and backlog.md, which is covered by its own test)
+  # - and the present-but-empty captain.md must NOT print ABSENT.
   absent_count=$(printf '%s\n' "$out" | grep -c '^ABSENT$')
-  [ "$absent_count" -eq 4 ] || fail "expected 4 ABSENT markers (secondmates.md, captain-shared.md, learnings.md, backlog.md), got $absent_count: $out"
+  [ "$absent_count" -eq 6 ] || fail "expected 6 ABSENT markers (secondmates.md, captain-shared.md, learnings.md, 2 doctrine files, backlog.md), got $absent_count: $out"
 
   cap_section=$(printf '%s\n' "$out" | awk '/^data\/captain\.md$/{flag=1;next}/^data\//{flag=0}flag')
   assert_contains "$cap_section" "(present, empty)" "empty-but-present captain.md was not distinguished from ABSENT"
 
   pass "context digest distinguishes ABSENT, empty-but-present, and populated files"
+}
+
+# The fresh-clone guarantee: tracked doctrine reaches a brand new instance with
+# a completely empty data/ through the clone itself, with no seeding, copying,
+# or first-run step. The world here is exactly that instance - every local
+# memory file absent - and the doctrine files exist only in the code root.
+test_context_digest_doctrine_loads_from_code_root() {
+  local rec root home fakebin out principles_section
+
+  rec=$(new_world context-doctrine)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+
+  mkdir -p "$root/doctrine"
+  printf '# Captain principles\n\nNEVER-WEAKEN-A-SAFETY-FIX\n' \
+    > "$root/doctrine/captain-principles.md"
+  printf '# Operational learnings\n\nTHE-FIVE-HOUR-WINDOW-IS-THE-CONSTRAINT\n' \
+    > "$root/doctrine/operational-learnings.md"
+  # data/ deliberately left completely empty: no captain.md, no learnings.md.
+
+  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+
+  assert_contains "$out" "NEVER-WEAKEN-A-SAFETY-FIX" \
+    "a home with an empty data/ did not receive the tracked captain principles"
+  assert_contains "$out" "THE-FIVE-HOUR-WINDOW-IS-THE-CONSTRAINT" \
+    "a home with an empty data/ did not receive the tracked operational learnings"
+  assert_contains "$out" "doctrine/captain-principles.md (tracked, universal, changed through the firstmate PR path)" \
+    "the digest did not label the doctrine section as tracked"
+
+  # The local files are still reported absent: doctrine does not stand in for
+  # them, and absence must stay meaningful.
+  assert_contains "$out" "data/captain.md" "digest dropped the local captain.md section"
+  assert_contains "$out" "data/learnings.md" "digest dropped the local learnings.md section"
+
+  # Each doctrine file leads the local file it is the universal base for, so a
+  # reader meets the standing rule before the instance's extension of it.
+  assert_contains "$out" "$(printf 'doctrine/captain-principles.md')" \
+    "doctrine/captain-principles.md section is missing"
+  principles_section=$(printf '%s\n' "$out" | sed -n '/^doctrine\/captain-principles.md/,/^data\/learnings.md/p')
+  assert_contains "$principles_section" "data/captain.md" \
+    "data/captain.md must follow the doctrine file it extends"
+  assert_contains "$principles_section" "doctrine/operational-learnings.md" \
+    "doctrine/operational-learnings.md must precede data/learnings.md"
+
+  # The read-once contract must cover them, or the next turn re-reads them.
+  assert_contains "$out" "every tracked doctrine/ file this clone" \
+    "the read-once contract did not cover the tracked doctrine files"
+
+  pass "tracked doctrine loads from the code root into a home with an empty data/"
+}
+
+# The digest must load whatever doctrine a clone actually carries, not two
+# files by name. A tracked doctrine file that is committed, indexed, and
+# privacy-scanned but never printed would look completely healthy while
+# reaching no agent - and splitting an over-large file is exactly what the
+# ceiling's own failure message asks the captain to do.
+#
+# git is used HERE, in the test, to prove the TRACKED set - what a new clone
+# receives - is fully covered. The runtime path deliberately lists the
+# directory instead, so a session start works in any clone with or without git.
+test_context_digest_prints_every_tracked_doctrine_file() {
+  local rec root home fakebin out tracked rel name context order expected
+
+  rec=$(new_world context-doctrine-derived)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+
+  mkdir -p "$root/doctrine"
+  tracked=$(git -C "$ROOT" ls-files -- doctrine)
+  [ -n "$tracked" ] || fail "the repository tracks no doctrine to prove coverage over"
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    cp "$ROOT/$rel" "$root/$rel"
+  done <<EOF
+$tracked
+EOF
+  # A split of the tracked material: the file the old named list would have
+  # shipped to every clone and shown to nobody.
+  printf '# Harness notes\n\nA-SPLIT-OF-THE-TRACKED-DOCTRINE\n' \
+    > "$root/doctrine/harness-notes.md"
+  printf '# Later notes\n\nSORTED-AFTER-THE-OTHER-SPLIT\n' \
+    > "$root/doctrine/zz-later-notes.md"
+
+  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    name=${rel##*/}
+    assert_contains "$out" "doctrine/$name (tracked, universal, changed through the firstmate PR path)" \
+      "the digest never printed tracked doctrine file $rel, so a clone carries it and no agent reads it"
+  done <<EOF
+$tracked
+EOF
+  assert_contains "$out" "A-SPLIT-OF-THE-TRACKED-DOCTRINE" \
+    "a doctrine file beyond the two paired ones was never loaded"
+  assert_contains "$out" "SORTED-AFTER-THE-OTHER-SPLIT" \
+    "a second additional doctrine file was never loaded"
+
+  # The paired order is the point, not just presence: a future change must not
+  # satisfy this test by dumping every doctrine file in one block at the end.
+  #
+  # The sequence is keyed on the digest's own structure - a label line is the
+  # line the subsection rule underlines - rather than on anything path-shaped,
+  # because the fixture prints this repository's real doctrine prose and a
+  # sentence opening with a path must not read as a section of the digest.
+  context=$(printf '%s\n' "$out" | awk '/^CONTEXT$/{f=1;next}/^NEXT STEP$/{f=0}f')
+  order=$(printf '%s\n' "$context" | awk -v rule="$SESSION_START_SUBRULE" '
+    NR > 1 && $0 == rule { sub(/ .*/, "", prev); print prev }
+    { prev = $0 }')
+  expected=$(printf '%s\n' \
+    'data/projects.md' \
+    'data/secondmates.md' \
+    'doctrine/captain-principles.md' \
+    'data/captain.md' \
+    'data/captain-shared.md' \
+    'doctrine/operational-learnings.md' \
+    'doctrine/harness-notes.md' \
+    'doctrine/zz-later-notes.md' \
+    'data/learnings.md')
+  [ "$order" = "$expected" ] \
+    || fail "context digest order changed; each paired doctrine file must lead the local file it is the base for, and additional doctrine must print with the universal material (want: $expected, got: $order)"
+
+  pass "the context digest loads every doctrine file the clone carries, in the paired order"
 }
 
 # --- lock refusal: read-only path --------------------------------------------
@@ -2181,6 +2317,8 @@ EOF
 }
 
 test_context_digest_absent_empty_present
+test_context_digest_doctrine_loads_from_code_root
+test_context_digest_prints_every_tracked_doctrine_file
 test_lock_refusal_read_only_path
 test_lock_write_failure_read_only_path
 test_trace_context_effective_state_is_frozen_after_lock

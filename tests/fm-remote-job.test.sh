@@ -289,6 +289,26 @@ wait "$OTHER_PID" 2>/dev/null || true
 OTHER_PID=
 pass "stale ownership is reclaimed without signaling a reused pid"
 
+# A worker killed between mktemp and mv leaves the publish temporary it was
+# committing inside the ownership lock. Reclaiming that lock has to clear it:
+# otherwise the reclaiming rmdir fails forever and every replacement worker is
+# refused ownership until the state directory is deleted by hand.
+fm_remote_job_stop_worker_tree "$NEW_WORKER_PID" \
+  || fail "the worker tree did not stop before the abandoned-temporary fixture"
+wait "$NEW_WORKER_PID" 2>/dev/null || true
+mkdir -p "$STATE_ROOT/worker.lock"
+ABANDONED_TEMP="$STATE_ROOT/worker.lock/.quarantine.abandoned"
+: > "$ABANDONED_TEMP"
+chmod 600 "$ABANDONED_TEMP"
+touch -t 200001010000 "$STATE_ROOT/worker.lock"
+[ ! -e "$STATE_ROOT/worker.ready" ] || touch -t 200001010000 "$STATE_ROOT/worker.ready"
+fm_remote_job_ensure_worker "$REMOTE_ROOT" "$ACCOUNT_HOME" || fail "$FM_REMOTE_JOB_ERROR"
+assert_absent "$ABANDONED_TEMP" "ownership reclamation kept an abandoned publish temporary"
+fm_remote_job_worker_identity_matches "$REMOTE_ROOT" "$ACCOUNT_HOME" \
+  || fail "an abandoned publish temporary blocked the replacement worker"
+NEW_WORKER_PID=$(cat "$STATE_ROOT/worker.pid")
+pass "an abandoned publish temporary never wedges ownership reclamation"
+
 FM_REMOTE_JOB_TIMEOUT=1
 fm_remote_job_stage "$ACCOUNT_HOME" "$REMOTE_ROOT" "$REMOTE_HOME" fm-timeout-job.sh < /dev/null > /dev/null
 JOB_ID=$FM_REMOTE_JOB_ID

@@ -143,6 +143,22 @@ worker_recover_quarantine() { # <account-home>
   rm -f -- "$WORKER_LOCK/quarantine"
 }
 
+# A worker killed between mktemp and mv leaves the publish temporary it was
+# about to commit inside the ownership lock. Those names belong to
+# worker_publish_lock_owner and worker_publish_quarantine alone, so clearing
+# them while reclaiming a lock already proven stale can never discard a live
+# owner's state - and leaving them makes the reclaiming rmdir fail forever,
+# refusing ownership to every replacement worker from then on.
+worker_clear_abandoned_lock_temps() {
+  local entry
+  for entry in "$WORKER_LOCK"/.pid.* "$WORKER_LOCK"/.start.* \
+    "$WORKER_LOCK"/.command.* "$WORKER_LOCK"/.quarantine.*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    [ -f "$entry" ] && [ ! -L "$entry" ] || return 1
+    rm -f -- "$entry" || return 1
+  done
+}
+
 worker_acquire_lock() {
   local account_home=$1 attempt=0
   while [ "$attempt" -lt 150 ]; do
@@ -164,6 +180,7 @@ worker_acquire_lock() {
     fi
     [ ! -L "$WORKER_LOCK/pid" ] && [ ! -L "$WORKER_LOCK/start" ] && [ ! -L "$WORKER_LOCK/command" ] || return 1
     rm -f -- "$WORKER_LOCK/pid" "$WORKER_LOCK/start" "$WORKER_LOCK/command" || return 1
+    worker_clear_abandoned_lock_temps || return 1
     rmdir "$WORKER_LOCK" || return 1
   done
   return 1

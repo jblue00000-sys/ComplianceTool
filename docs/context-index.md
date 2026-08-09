@@ -131,12 +131,17 @@ Both the index and search commands report the missing dependency and the exact i
 | Kind | Source | Task id |
 | ---- | ------ | ------- |
 | `transcript` | Claude Code session transcripts for this home, from the glob derived above (one document per session) | - |
-| `captain` | `data/captain.md`, `data/captain-shared.md` | - |
-| `learning` | `data/learnings.md` | - |
-| `record` | every other `data/*.md`, such as the project registry, the secondmate routing table, and the backlog | - |
+| `captain` | `data/captain.md`, `data/captain-shared.md`, tracked `doctrine/captain-principles.md` | - |
+| `learning` | `data/learnings.md`, tracked `doctrine/operational-learnings.md` | - |
+| `record` | every other `data/*.md`, such as the project registry, the secondmate routing table, and the backlog, plus any other tracked `doctrine/*.md` | - |
 | `report` | `data/<id>/report.md` | `<id>` |
 | `brief` | `data/<id>/brief.md` | `<id>` |
 | `status` | `state/<id>.status` | `<id>` |
+
+The tracked `doctrine/` files are read from the invoking clone's code root (`FM_ROOT_OVERRIDE`, else the clone the command itself lives in), while every store identity still comes from the home, and they are indexed as that home's records into that home's own collection.
+Run without `--home`, which is how a session uses it, that is the instance's own clone into the instance's own collection.
+Run with `--home`, it is the invoking clone's doctrine into the named home's collection, which may sit at a different fast-forward point; the store boundary is unaffected either way, since no other home's collection is read or written.
+A clone with no `doctrine/` directory simply contributes nothing from it.
 
 Transcripts keep only the user and assistant text turns.
 Tool calls, tool results, hook and system records, slash-command plumbing, and injected reminders are dropped, so a search matches what was actually said rather than command output.
@@ -176,6 +181,6 @@ Excluding transcripts deliberately with `--kind` silences it.
 
 ## Tests
 
-`tests/fm-context-index.test.sh` covers chunking, content-hash dedupe, transcript extraction, per-home identity derivation, the home-derived transcript glob, both empty-glob warnings, per-kind counts, all three refusals, and the CLI contract everywhere.
+`tests/fm-context-index.test.sh` covers chunking, content-hash dedupe, transcript extraction, per-home identity derivation, the home-derived transcript glob, both empty-glob warnings, per-kind counts, tracked-doctrine ingestion and its per-home point ids, all three refusals, and the CLI contract everywhere.
 Its integration layer exercises real ingest, a real incremental re-run, real search, the refusal to index or search a collection another home claimed, and the guarantee that a contaminated collection never answers with another home's records.
 It writes only to its own throwaway collections, and skips with a reason when this home's instance or the embedding model is unavailable.

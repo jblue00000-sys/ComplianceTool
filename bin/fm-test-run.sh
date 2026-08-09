@@ -891,6 +891,29 @@ families_for_changed_path() {
       printf '%s\n' secondmate
       printf '%s\n' session-bootstrap
       ;;
+    doctrine/*)
+      # Tracked doctrine is loaded by the session-start digest, bounded by the
+      # startup-memory report, indexed by the context index, and privacy-scanned
+      # by its own suite. Mapped explicitly rather than by whichever test
+      # happens to quote a path: docs/configuration.md promises a further
+      # doctrine/*.md is picked up with no code change, and a contributor
+      # following that must not meet an unmapped-path failure here.
+      #
+      # It is tracked prose too, so the audience inventory owes it an entry:
+      # that check belongs in the local selection, not first in a CI lane.
+      printf '%s\n' pure-contract-unit
+      printf '%s\n' session-bootstrap
+      printf '%s\n' secondmate
+      printf '%s\n' "__script__:fm-doctrine.test.sh"
+      printf '%s\n' "__script__:fm-context-index.test.sh"
+      ;;
+    bin/fm-doctrine-lib.sh)
+      # The one owner of the doctrine set: the session-start digest that loads
+      # it, the budget report that bounds it, and the privacy scan over it.
+      printf '%s\n' session-bootstrap
+      printf '%s\n' secondmate
+      printf '%s\n' "__script__:fm-doctrine.test.sh"
+      ;;
     bin/fm-secondmate*|bin/fm-remote*|bin/fm-on.sh|bin/fm-home-seed.sh|\
     bin/fm-backlog-handoff.sh|bin/fm-backlog-receive.sh|bin/fm-procevent-remote-reply.sh|\
     bin/fm-config-inherit-lib.sh|bin/fm-config-push.sh|bin/fm-shared*|\

@@ -3,8 +3,9 @@
 # conversational and operational context.
 #
 # Indexes Claude Code session transcripts for this home, data/*.md records,
-# per-task briefs and scout reports, and state/*.status history into a
-# DEDICATED local Qdrant instance, then answers semantic queries with
+# the tracked doctrine/*.md this clone carries, per-task briefs and scout
+# reports, and state/*.status history into a DEDICATED local Qdrant
+# instance, then answers semantic queries with
 # provenance. Ingestion is incremental and idempotent: a chunk's point id is
 # derived from its content hash, so re-running skips everything unchanged.
 #
@@ -31,6 +32,8 @@
 #
 # Environment:
 #   FM_HOME                  firstmate home to index (default: the repo root)
+#   FM_ROOT_OVERRIDE         code root the tracked doctrine/ is read from
+#                            (default: this script's own clone)
 #   FM_CONTEXT_INSTANCE      instance label (default: derived from FM_HOME)
 #   FM_CONTEXT_QDRANT_URL    dedicated Qdrant base URL, loopback host only
 #                            (default: derived port on 127.0.0.1)
@@ -476,6 +479,44 @@ def data_records(home: Path, kinds) -> list:
     return records
 
 
+def doctrine_records(root: Path, home: Path, kinds) -> list:
+    """Chunk the tracked doctrine this clone carries, as this home's records.
+
+    Doctrine holds the captain knowledge promoted out of data/captain.md and
+    data/learnings.md because it is true for every application, so it has to
+    stay findable by exactly the search that used to reach it: knowledge that
+    cannot be retrieved gets re-derived.
+
+    The root and the home are two separate resolutions: doctrine is read from
+    the invoking clone's code root (FM_ROOT_OVERRIDE, else this script's own
+    clone) and indexed into the collection of the home this run targets, under
+    that home's identity. Run without --home, which is how a session uses it,
+    that is the instance's own clone into the instance's own collection; run
+    with --home, it is this clone's doctrine into the named home's collection,
+    which may sit at a different fast-forward point. Either way no other
+    home's store is read or written. A clone with no doctrine/ directory
+    contributes nothing and never fails.
+    """
+    records = []
+    for path in sorted((root / "doctrine").glob("*.md")):
+        name = path.name
+        if name == "captain-principles.md":
+            kind = "captain"
+        elif name == "operational-learnings.md":
+            kind = "learning"
+        else:
+            kind = "record"
+        if kind not in kinds:
+            continue
+        text = _read(path)
+        if not text.strip():
+            continue
+        records.extend(make_chunks(
+            kind, str(path), text, home=str(home),
+            timestamp=_file_timestamp(path), role="firstmate"))
+    return records
+
+
 def task_records(home: Path, kinds) -> list:
     """Chunk per-task scout reports and crewmate briefs."""
     records = []
@@ -560,7 +601,7 @@ def format_counts(counts: dict) -> str:
     return ", ".join("%s=%d" % item for item in sorted(counts.items())) or "none"
 
 
-def collect(home: Path, transcripts: str, kinds) -> list:
+def collect(home: Path, transcripts: str, kinds, root=None) -> list:
     """Gather every requested source kind into one record list.
 
     Warns, without failing, when transcripts were asked for and the glob
@@ -573,6 +614,7 @@ def collect(home: Path, transcripts: str, kinds) -> list:
         message = transcript_glob_warning(transcripts)
         if message:
             warn(message)
+    records.extend(doctrine_records(Path(root or default_root()), home, wanted))
     records.extend(data_records(home, wanted))
     records.extend(task_records(home, wanted))
     if "status" in wanted:
@@ -884,6 +926,12 @@ def command_identity(args) -> int:
 
 def default_home() -> str:
     return os.environ.get("FM_HOME", str(Path(__file__).resolve().parents[1]))
+
+
+def default_root() -> str:
+    """This clone's code root, where the tracked doctrine/ lives."""
+    return os.environ.get(
+        "FM_ROOT_OVERRIDE", str(Path(__file__).resolve().parents[1]))
 
 
 def resolve_instance(args) -> Instance:

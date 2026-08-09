@@ -373,6 +373,14 @@
       "audience": "operator-current"
     },
     {
+      "path": "doctrine/captain-principles.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": "doctrine/operational-learnings.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": "skills/stow/SKILL.md",
       "audience": "public-product"
     }

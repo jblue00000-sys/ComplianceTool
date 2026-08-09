@@ -27,6 +27,7 @@ Every `/stow` invocation performs this complete pass, even when the session cont
    Treat an absent local file as absent, not as an invitation to manufacture content.
    In a primary home, all three are curation inputs under their existing ownership rules.
    In a secondmate home, `data/captain-shared.md` is a read-only primary-owned input: count it, never edit it, and curate only the editable local files.
+   The report also lists the tracked `doctrine/` files: they are context for judging whether a finding is already covered universally, never curation targets, and a doctrine change is ordinary repository work routed by AGENTS.md section 6.
 3. Build one whole-file retention plan before editing.
    Retain, in order: current captain preferences, authority and safety boundaries, and recurring working style; stable home-local operating facts that repeatedly affect future work and are expensive to rediscover; then concise pointers to an existing authoritative report, project document, configuration, or backlog item.
    Retain lower-priority material only while budget remains.

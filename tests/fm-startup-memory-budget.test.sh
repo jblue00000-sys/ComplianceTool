@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Behavioral coverage for the visible startup-memory budget, its safe parser,
-# accounting command, primary-to-secondmate convergence, and exact reread bytes.
+# accounting command, the tracked doctrine files it reports against their own
+# ceiling without charging them to a home, primary-to-secondmate convergence,
+# and exact reread bytes.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -165,6 +167,137 @@ test_safe_parser_rejects_ambiguous_and_unsafe_values() {
   pass "budget parser accepts one exact positive value and rejects malformed or unsafe inputs"
 }
 
+# Tracked doctrine shares the startup prompt-memory surface, so its cost must
+# be visible - but it is changed through the firstmate PR path, not by a local
+# /stow pass, so counting it against a home's allowance would manufacture an
+# excess no local curation could ever clear.
+test_budget_reports_tracked_doctrine_without_counting_it() {
+  local home root out
+  home="$TMP_ROOT/doctrine-home"
+  root="$TMP_ROOT/doctrine-root"
+  mkdir -p "$home/config" "$home/data" "$root/doctrine"
+  printf '10\n' > "$home/config/startup-memory-budget"
+  printf 'abc\n' > "$home/data/captain.md"
+  printf 'universal principles, far larger than this home allowance\n' \
+    > "$root/doctrine/captain-principles.md"
+  printf 'universal learnings\n' > "$root/doctrine/operational-learnings.md"
+
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$BUDGET" report)
+
+  assert_contains "$out" 'file=doctrine/captain-principles.md bytes=58 estimated_tokens=20 status=present' \
+    "report did not account for tracked captain principles"
+  assert_contains "$out" 'file=doctrine/operational-learnings.md bytes=20 estimated_tokens=7 status=present' \
+    "report did not account for tracked operational learnings"
+  assert_contains "$out" 'tracked_doctrine_estimated_tokens=27 not-counted-against-local-budget' \
+    "report did not total the tracked doctrine separately"
+  assert_contains "$out" 'tracked_doctrine_ceiling_tokens=7500' \
+    "report did not publish the tracked doctrine ceiling"
+  assert_contains "$out" 'tracked_doctrine_status=within-budget' \
+    "tracked doctrine well under its own ceiling was not reported as within budget"
+  case "$out" in
+    *tracked_doctrine_unmeasured_files=*)
+      fail "every doctrine file was measured, so no unmeasured count should print" ;;
+  esac
+
+  # 27 doctrine tokens against a 10-token allowance, and the home stays within
+  # budget: the local total is the local files alone.
+  assert_contains "$out" 'total_estimated_tokens=2' \
+    "tracked doctrine leaked into the local memory total"
+  assert_contains "$out" 'budget_status=within-budget' \
+    "tracked doctrine was charged against the home allowance"
+
+  rm -f "$root/doctrine/operational-learnings.md"
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$BUDGET" report)
+  assert_contains "$out" 'file=doctrine/operational-learnings.md bytes=0 estimated_tokens=0 status=absent' \
+    "an absent doctrine file must be reported, not silently skipped"
+
+  # A doctrine file beyond the two paired ones - what splitting an over-large
+  # file produces - is measured and charged to the doctrine total too, or it
+  # would escape the very ceiling whose failure message recommends the split.
+  printf 'universal harness notes\n' > "$root/doctrine/harness-notes.md"
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$BUDGET" report)
+  assert_contains "$out" 'file=doctrine/harness-notes.md bytes=24 estimated_tokens=8 status=present' \
+    "a doctrine file beyond the two paired ones was never measured"
+  assert_contains "$out" 'tracked_doctrine_estimated_tokens=28 not-counted-against-local-budget' \
+    "a doctrine file beyond the two paired ones was left out of the doctrine total"
+  rm -f "$root/doctrine/harness-notes.md"
+
+  # Excluded from the home allowance is not unbounded: one token past the
+  # doctrine ceiling has to say so, in the same vocabulary, while the local
+  # accounting beside it is untouched.
+  head -c 22501 /dev/zero | tr '\0' x > "$root/doctrine/captain-principles.md"
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$BUDGET" report)
+  assert_contains "$out" 'tracked_doctrine_estimated_tokens=7501 not-counted-against-local-budget' \
+    "the doctrine total did not follow the grown tracked file"
+  assert_contains "$out" 'tracked_doctrine_status=over-budget' \
+    "tracked doctrine past its own ceiling produced no over-budget signal"
+  assert_contains "$out" 'budget_status=within-budget' \
+    "over-ceiling doctrine leaked into the home's own budget verdict"
+
+  pass "budget report shows tracked doctrine separately from the local allowance"
+}
+
+# A doctrine file this home cannot measure is a tracked-material problem no
+# local /stow curation could fix, and the local accounting beside it is still
+# complete, so the report degrades to a named status and still succeeds. Local
+# memory files stay fail-closed - that case is covered below.
+test_budget_report_degrades_on_unmeasurable_doctrine() {
+  local home root out rc
+  home="$TMP_ROOT/doctrine-degrade-home"
+  root="$TMP_ROOT/doctrine-degrade-root"
+  mkdir -p "$home/config" "$home/data" "$root/doctrine" "$TMP_ROOT/doctrine-target"
+  printf '10\n' > "$home/config/startup-memory-budget"
+  printf 'abc\n' > "$home/data/captain.md"
+  printf 'universal learnings\n' > "$root/doctrine/operational-learnings.md"
+  printf 'elsewhere\n' > "$TMP_ROOT/doctrine-target/captain-principles.md"
+  ln -s "$TMP_ROOT/doctrine-target/captain-principles.md" \
+    "$root/doctrine/captain-principles.md"
+
+  rc=0
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$BUDGET" report 2>/dev/null) || rc=$?
+
+  expect_code 0 "$rc" "an unmeasurable doctrine file must not fail the local budget report"
+  assert_contains "$out" 'file=doctrine/captain-principles.md bytes=unknown estimated_tokens=unknown status=unmeasured-memory-file-is-not-an-ordinary-regular-file' \
+    "the unmeasurable doctrine file was not reported with a status naming the problem"
+  assert_contains "$out" 'file=doctrine/operational-learnings.md bytes=20 estimated_tokens=7 status=present' \
+    "one unmeasurable doctrine file must not stop the others being measured"
+  assert_contains "$out" 'tracked_doctrine_estimated_tokens=7 not-counted-against-local-budget' \
+    "the doctrine total must still print with the files it could measure"
+  assert_contains "$out" 'total_estimated_tokens=2' \
+    "the local accounting must be unaffected by an unmeasurable doctrine file"
+  assert_contains "$out" 'budget_status=within-budget' \
+    "the local budget verdict must still be reported"
+  # The doctrine verdict is computed from an incomplete measurement here, so it
+  # must not read as an all-clear it did not earn.
+  assert_contains "$out" 'tracked_doctrine_unmeasured_files=1' \
+    "a doctrine verdict over an incomplete measurement did not say so"
+
+  pass "an unmeasurable doctrine file degrades to a reported status without failing the report"
+}
+
+# The regression that makes the ceiling real rather than advisory: doctrine
+# grows through the PR path, so CI is where the growth arrives, and this is the
+# check that fails there. It measures the tracked doctrine of this very clone.
+test_repo_tracked_doctrine_stays_within_its_ceiling() {
+  local home out
+  home="$TMP_ROOT/doctrine-ceiling-home"
+  mkdir -p "$home/config" "$home/data"
+  printf '7500\n' > "$home/config/startup-memory-budget"
+
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" "$BUDGET" report)
+
+  assert_contains "$out" 'tracked_doctrine_ceiling_tokens=7500' \
+    "the report did not publish the ceiling this repository's doctrine is held to"
+  case "$out" in
+    *tracked_doctrine_unmeasured_files=*)
+      fail "this repository's own doctrine could not be measured in full" ;;
+  esac
+  assert_contains "$out" 'tracked_doctrine_status=within-budget' \
+    "this repository's tracked doctrine has outgrown its 7500-token ceiling: prune or split it in doctrine/, since no local /stow pass can curate tracked material ($(printf '%s\n' "$out" | grep '^tracked_doctrine_estimated_tokens='))"
+
+  pass "this repository's tracked doctrine stays within its ceiling"
+}
+
 test_budget_accounting_reports_all_three_files_and_safe_failure() {
   local home out rc outside
   home="$TMP_ROOT/accounting-home"
@@ -319,6 +452,9 @@ test_primary_budget_converges_with_exact_reread_and_safe_failures() {
 
 test_primary_bootstrap_materializes_visible_default
 test_safe_parser_rejects_ambiguous_and_unsafe_values
+test_budget_reports_tracked_doctrine_without_counting_it
+test_budget_report_degrades_on_unmeasurable_doctrine
+test_repo_tracked_doctrine_stays_within_its_ceiling
 test_budget_accounting_reports_all_three_files_and_safe_failure
 test_primary_budget_converges_with_exact_reread_and_safe_failures
 

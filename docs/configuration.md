@@ -134,18 +134,39 @@ It does not set `commands.test` to a complete `tests/*.test.sh` walk.
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for the firstmate-specific local test policy and entry points.
 Portable shard evidence and coverage rules are in [fm-test-portable-shards.md](fm-test-portable-shards.md); [herdr-backend.md](herdr-backend.md#destructive-lab-safety) owns the real-Herdr lane's isolation boundary, and [runtime-backends.md](verification/runtime-backends.md#herdr) owns active evidence.
 
+## Captain doctrine (doctrine/)
+
+The tracked `doctrine/` directory holds the captain knowledge that is true for every application, in two paired files: [`captain-principles.md`](../doctrine/captain-principles.md) for standing principles and working style, and [`operational-learnings.md`](../doctrine/operational-learnings.md) for operational facts about the environment and its tooling.
+Both are printed in the session-start context digest, each immediately before the local file it is the universal base for, and they are read from the code root rather than the home.
+The set is listed from the clone rather than named in code, so any further `doctrine/*.md` a split produces is printed with the universal material, counted in the doctrine accounting, and held to the same ceiling, with no code change; `bin/fm-doctrine-lib.sh` is the single owner of that set for both the digest and the accounting.
+Because they are tracked, a fresh clone with a completely empty `data/` still starts with them loaded: there is no seeding, copying, or first-run step to forget.
+They are also indexed by [`bin/fm-context-index`](context-index.md#what-is-indexed) alongside their local counterparts, so a promoted fact stays reachable by the same semantic search that used to find it in `data/`.
+
+A fact belongs in `doctrine/` when it would still be true if this environment were building a different application, and in the home's gitignored `data/captain.md` or `data/learnings.md` when it depends on this instance, its projects, its machine, or its current focus.
+When one entry has both halves - a standing rule and its concrete local application - the rule goes to `doctrine/` and the local file keeps only the application, with no restatement of the rule.
+Nothing personal reaches `doctrine/`: no credentials, account or repository names, client names, or machine paths, because tracked material is shareable and `data/` is not.
+Changing doctrine is ordinary firstmate repository work through the branch, pipeline, PR, and captain-merge path; never hand-edit one instance's copy, because the next fast-forward is not a merge and local edits have no route home.
+
+Propagation between instances is **deliberately manual**: each instance picks up a doctrine improvement when it fast-forwards, through `git pull` or [`/updatefirstmate`](../.agents/skills/updatefirstmate/SKILL.md).
+There is no sync daemon and no shared runtime by design.
+The captain's model is one fully separate instance per application with nothing shared at runtime, so any automatic propagation channel would reintroduce exactly the coupling that model exists to avoid, and it would push unreviewed changes into an instance that may be mid-flight.
+The accepted cost is that an instance is as current as its last fast-forward, and that promoting a learning is a judgement call at the moment it is learned; `AGENTS.md` section 6 owns that routing decision.
+
 ## Captain Preferences (data/captain.md / data/captain-shared.md)
 
 Domain-local preferences for one captain's fleet live locally in each home's `data/captain.md`; it is gitignored and printed in the session-start context digest after `data/projects.md` and optional `data/secondmates.md`.
 Before changing it, inspect the current file and rewrite or prune the matching bullet in place; add a new bullet only for a genuinely new durable preference.
+Keep it to what is specific to this instance and its application; what holds for any application belongs in tracked [`doctrine/`](#captain-doctrine-doctrine) instead.
 Shared captain preferences that apply across secondmate domains live only in the primary home's optional `data/captain-shared.md`.
+That file is a separate mechanism with a different purpose: it carries private preferences from one primary home down to the secondmate homes it owns, so it stays gitignored and primary-authoritative and is never a vehicle for tracked doctrine.
 `secondmate-provisioning` owns its propagation contract, including the required header, read-only secondmate copies, quarantine diagnostics, and the rollout rule that existing homes trim `data/captain.md` by hand after first propagation rather than deleting private content automatically.
 
 ## Operational learnings (data/learnings.md)
 
 Fleet-local operational facts and gotchas live locally in `data/learnings.md`; it is gitignored and printed after the captain-preference files in the session-start context digest.
 The file is created lazily on first learning and follows the same dated, evidence-backed, curated style as `data/captain.md`: inspect the current file first, then rewrite or prune stale entries instead of appending forever.
-There is no shared learnings file by captain decision.
+Keep it to facts that depend on this instance, its projects, or this machine; a fact that would hold in any instance belongs in tracked [`doctrine/operational-learnings.md`](#captain-doctrine-doctrine) instead.
+There is no shared learnings file propagated between homes by captain decision, which is a separate question from the tracked doctrine every clone carries.
 
 ## Startup memory budget (config/startup-memory-budget)
 
@@ -156,6 +177,11 @@ A secondmate does not create an independent default and instead receives the pri
 The file must be one positive base-10 integer followed by exactly one newline in a regular, single-linked file beneath a non-symlinked `config/` directory.
 Malformed, multi-line, symlinked, hardlinked, special, or otherwise unsafe values are rejected rather than treated as a default.
 Use `bin/fm-startup-memory-budget.sh read` to validate and print the effective value, or `bin/fm-startup-memory-budget.sh report` to account for the three files.
+The report also prints the tracked `doctrine/` files, which share the startup prompt-memory surface but are reported separately and never counted against a home's allowance: the budget governs the local memory a `/stow` pass can curate, and doctrine changes only through the firstmate PR path.
+Excluded is not unbounded: tracked doctrine has its own ceiling of 7500 estimated tokens, reported as `tracked_doctrine_ceiling_tokens` and `tracked_doctrine_status` in the same `within-budget` / `over-budget` vocabulary, so growth no local pass could curate still has one place that calls it too large.
+That ceiling is a repository constant in `bin/fm-startup-memory-budget-lib.sh` rather than a per-home setting, and it is deliberately not settable from a home's gitignored `config/`: doctrine is tracked material that only changes through the branch-and-PR path, so the ceiling belongs where that path reviews it, and `tests/fm-startup-memory-budget.test.sh` fails in CI when the tracked doctrine exceeds it.
+It matches the per-home default so there is a single number to remember, and it is a separate budget rather than a shared one because the two halves are curated by different people through different routes.
+When a doctrine file cannot be measured, the count of those files is reported as `tracked_doctrine_unmeasured_files` so a `within-budget` verdict is never read as an all-clear over an incomplete measurement.
 The stable local estimate is `ceil(UTF-8 bytes / 3)` per file, a conservative portable approximation rather than a provider-exact tokenizer.
 An inherited `data/captain-shared.md` counts in a secondmate's total but remains primary-owned and read-only there.
 The internal [`/stow` skill](../.agents/skills/stow/SKILL.md) owns curation and its automatic secondmate cascade, which accounts every home against this same per-home allowance separately rather than against a fleet total.

@@ -5,7 +5,8 @@
 # producing ONE ordered digest, so a session starts in one or two turns
 # instead of the six-plus separate reads the old docs required: run
 # fm-bootstrap.sh, then separately read data/projects.md, data/secondmates.md,
-# data/captain.md, data/captain-shared.md, data/learnings.md, then run
+# the tracked doctrine/ files, data/captain.md, data/captain-shared.md,
+# data/learnings.md, then run
 # fm-lock.sh, fm-wake-drain.sh, then read data/backlog.md, every state/*.meta,
 # and every state/*.status.
 # Every one of those reads is UNCONDITIONAL at every session start, so they
@@ -48,9 +49,12 @@
 #                       read-only, always runs.
 #   7. network checks - the result of the deferred network stage started back at
 #                       step 1, harvested WITHOUT waiting for it.
-#   8. context digest - data/projects.md, data/secondmates.md, data/captain.md,
-#                       data/captain-shared.md, data/learnings.md: read-only,
-#                       always safe, always runs.
+#   8. context digest - data/projects.md, data/secondmates.md, the tracked
+#                       doctrine/ files and the local captain/learnings files
+#                       they are the universal base for: read-only, always
+#                       safe, always runs. The doctrine files come from
+#                       FM_ROOT, so a clone with an empty data/ still starts
+#                       with the captain's standing principles loaded.
 #   9. closing reminder - prints the context-specific watcher next step; this
 #                       script points back to the emitted harness supervision
 #                       block and deliberately never arms the watcher itself.
@@ -289,6 +293,8 @@ PRIMARY_HARNESS=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || printf unknown)
 . "$SCRIPT_DIR/fm-trace-context-lib.sh"
 # shellcheck source=bin/fm-line-cap-lib.sh
 . "$SCRIPT_DIR/fm-line-cap-lib.sh"
+# shellcheck source=bin/fm-doctrine-lib.sh
+. "$SCRIPT_DIR/fm-doctrine-lib.sh"
 
 # One tasks-axi compatibility verdict per session start. The probe costs three
 # tasks-axi subprocesses and this digest needs the same answer twice - here for
@@ -648,8 +654,10 @@ section "READ-ONCE CONTRACT"
 cat <<'EOF'
 Everything below is printed in full for this session start: every state/*.meta,
 a compact data/backlog.md listing, a bounded tail of every state/*.status,
-data/projects.md, data/secondmates.md, data/captain.md, data/captain-shared.md,
-and data/learnings.md.
+data/projects.md, data/secondmates.md, every tracked doctrine/ file this clone
+carries - each of the two paired ones immediately before the local file it is
+the universal base for - data/captain.md, data/captain-shared.md, and
+data/learnings.md.
 Do NOT re-read any of them after reading this digest, and do NOT bulk-read
 data/backlog.md or state/*.status: re-reading everything defeats the entire
 point of this command.
@@ -770,8 +778,27 @@ stage context
 section "CONTEXT"
 print_file_or_absent "$DATA/projects.md" "data/projects.md"
 print_file_or_absent "$DATA/secondmates.md" "data/secondmates.md"
+# Each tracked doctrine file leads the local file it is the universal base for,
+# so the standing rule is read before the instance's extension of it. They come
+# from FM_ROOT, not FM_HOME: they are tracked, so a clone with a completely
+# empty data/ still starts with the captain's standing principles loaded, with
+# no seeding, copying, or sync step of any kind.
+print_file_or_absent "$FM_ROOT/doctrine/$FM_DOCTRINE_CAPTAIN_FILE" \
+  "doctrine/$FM_DOCTRINE_CAPTAIN_FILE (tracked, universal, changed through the firstmate PR path)"
 print_file_or_absent "$DATA/captain.md" "data/captain.md"
 print_file_or_absent "$DATA/captain-shared.md" "data/captain-shared.md (shared, main-authoritative, read-only in secondmate homes)"
+print_file_or_absent "$FM_ROOT/doctrine/$FM_DOCTRINE_LEARNINGS_FILE" \
+  "doctrine/$FM_DOCTRINE_LEARNINGS_FILE (tracked, universal, changed through the firstmate PR path)"
+# Any further doctrine this clone carries, listed from disk rather than named,
+# so a file added tomorrow is loaded instead of shipping to every clone and
+# reaching no agent. It prints with the universal material and before the local
+# learnings, which keeps each paired file immediately ahead of the local file
+# it is the base for.
+while IFS= read -r doctrine_extra; do
+  [ -n "$doctrine_extra" ] || continue
+  print_file_or_absent "$FM_ROOT/doctrine/$doctrine_extra" \
+    "doctrine/$doctrine_extra (tracked, universal, changed through the firstmate PR path)"
+done < <(fm_doctrine_additional_names "$FM_ROOT")
 print_file_or_absent "$DATA/learnings.md" "data/learnings.md"
 
 # --- 9. closing reminder -----------------------------------------------
