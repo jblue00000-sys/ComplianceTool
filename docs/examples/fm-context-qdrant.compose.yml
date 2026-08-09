@@ -1,23 +1,31 @@
-# Dedicated Qdrant instance for firstmate's local context index (bin/fm-context-index).
-# It is deliberately separate from any other Qdrant on this machine: its own
-# container name, its own pinned image, its own localhost-only port, and its own
-# named volume, so firstmate never reads or writes another project's vectors.
+# Per-home Qdrant instance for firstmate's local context index (bin/fm-context-index).
+# It is deliberately separate from any other Qdrant on this machine AND from any
+# other firstmate home's: the compose project, container name, named volume, and
+# loopback port all come from that home's identity, so no two homes can share a
+# store. Every value is required, so a missing one stops compose with the
+# variable's own name instead of starting an unidentified container.
 #
-#   docker compose -f docs/examples/fm-context-qdrant.compose.yml up -d
-#   docker compose -f docs/examples/fm-context-qdrant.compose.yml down
+#   env $(bin/fm-context-index identity --env) docker compose -f docs/examples/fm-context-qdrant.compose.yml up -d
+#   env $(bin/fm-context-index identity --env) docker compose -f docs/examples/fm-context-qdrant.compose.yml ps
+#   env $(bin/fm-context-index identity --env) docker compose -f docs/examples/fm-context-qdrant.compose.yml down
+#
+# The substitution is unquoted on purpose: identity --env prints one assignment
+# per line and publishes only values that cannot contain whitespace, so
+# word-splitting them into arguments of env is what is wanted.
 #
 # See docs/context-index.md for the full operator notes.
+name: ${FM_CONTEXT_COMPOSE_PROJECT:?run bin/fm-context-index identity --env first}
 services:
-  fm-context-qdrant:
+  qdrant:
     image: qdrant/qdrant:v1.18.3
-    container_name: fm-context-qdrant
+    container_name: ${FM_CONTEXT_CONTAINER:?run bin/fm-context-index identity --env first}
     restart: unless-stopped
     ports:
       # Bound to loopback only: this index never leaves the machine.
-      - "127.0.0.1:6631:6333"
+      - "127.0.0.1:${FM_CONTEXT_PORT:?run bin/fm-context-index identity --env first}:6333"
     volumes:
-      - fm-context-qdrant-storage:/qdrant/storage
+      - storage:/qdrant/storage
 
 volumes:
-  fm-context-qdrant-storage:
-    name: fm-context-qdrant-storage
+  storage:
+    name: ${FM_CONTEXT_VOLUME:?run bin/fm-context-index identity --env first}

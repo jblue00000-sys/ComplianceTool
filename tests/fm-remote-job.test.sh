@@ -163,10 +163,18 @@ case ":$FM_REMOTE_JOB_OPERATOR_PATH:" in
 esac
 pass "operator PATH resolves the authorized Nix profile bin link"
 
+# Job control, exactly as fm_remote_job_start_linux_worker launches a worker:
+# the supervisor and its serving child get their own process group. Without it
+# they share this shell's group, fm_remote_job_worker_process_group refuses to
+# name that group, and a replacement's stop degrades to a lone-process kill -
+# leaving this supervisor alive to respawn a stale-root child that races the
+# replacement for worker ownership.
+set -m
 HOME="$ACCOUNT_HOME" PATH="$RUNTIME_BIN:/usr/bin:/bin:/usr/sbin:/sbin" FM_FAKE_PERL_LOG="$FAKE_PERL_LOG" \
   FM_ROOT_OVERRIDE="$REMOTE_ROOT" FM_REMOTE_JOB_STATE_ROOT="$STATE_ROOT" \
   FM_REMOTE_JOB_PLATFORM_OVERRIDE=Linux FM_REMOTE_JOB_TIMEOUT=5 \
   "$REMOTE_ROOT/bin/fm-remote-job-worker.sh" > "$TMP_ROOT/worker.out" 2> "$TMP_ROOT/worker.err" &
+set +m
 for _ in $(seq 1 100); do
   [ -f "$STATE_ROOT/worker.ready" ] && break
   sleep 0.05
@@ -430,9 +438,11 @@ for _ in $(seq 1 100); do
   sleep 0.05
 done
 kill -0 "$WORKER_PID" 2>/dev/null && fail "the worker did not finish its TERM shutdown"
+set -m
 HOME="$ACCOUNT_HOME" FM_ROOT_OVERRIDE="$REMOTE_ROOT" FM_REMOTE_JOB_STATE_ROOT="$STATE_ROOT" \
   FM_REMOTE_JOB_PLATFORM_OVERRIDE=Linux FM_REMOTE_JOB_TIMEOUT=1 \
   "$REMOTE_ROOT/bin/fm-remote-job-worker.sh" >> "$TMP_ROOT/worker.out" 2>> "$TMP_ROOT/worker.err" &
+set +m
 for _ in $(seq 1 100); do
   [ -f "$STATE_ROOT/worker.ready" ] && break
   sleep 0.05
