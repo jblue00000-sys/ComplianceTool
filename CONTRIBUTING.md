@@ -58,6 +58,7 @@ See the [no-mistakes quick start](https://kunchenguid.github.io/no-mistakes/star
 ## Development
 
 Tracked changes to firstmate itself - `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `.tasks.toml`, `.github/workflows/`, `bin/`, `.agents/skills/`, `doctrine/`, and `skills/` - ship through the `no-mistakes` pipeline on a feature branch and require an explicit merge approval.
+That includes documentation-only changes here: this repository's standing rigor is one the executed-words fast path in tracked [`doctrine/captain-principles.md`](doctrine/captain-principles.md) never lowers, and the `Require no-mistakes` check rejects any PR raised outside the pipeline.
 Before making any such change, load the agent-only `firstmate-coding-guidelines` skill (`.agents/skills/firstmate-coding-guidelines/SKILL.md`).
 It has the knowledge-placement rules that keep `AGENTS.md` from regrowing after each diet pass.
 There is no reliable way for `bin/fm-brief.sh`'s scaffold to detect that a task's repo is firstmate itself, so firstmate adds this skill's load line to firstmate-repo briefs by hand.

@@ -102,6 +102,16 @@ They are weighted at simplicity, speed, and the end user rather than at craft an
   After a major feature lands, the next worker starts cold and orients from the committed state surface rather than carried-over context.
   Every ship brief opens by pointing at those state files, and at a dependency or impact graph once one exists for that project.
   Workers already start with no context structurally, so this preference is about making the committed state their primary orientation source.
+- **Checking is proportional to whether the words are executed, not to the file's type.**
+  Captain's words, 2026-08-10: "if it's just text changes, like in AGENTS.md or something like that, there's no point going through a whole no-mistakes run or full checking because it's really just text updates."
+  Measured the same day: building a change takes 5-15 minutes while review, tests, and the fixing that follows take 20-40, so roughly three quarters of the cost was checking, and it was spent identically on a one-line wording fix and on a change to how the assistant authenticates.
+  **Fast path** - prose nothing acts on, such as documentation, README, comments, evidence write-ups, and task notes - ships `direct-PR` instead of `no-mistakes`: still a pull request under the captain's standing merge posture, just no validation pipeline.
+  **Full path** - prose the system executes, such as anything under `agent_behavior/`, prompts, refusal and reply templates, policy or service-level data files, anything a script parses, and this environment's own AGENTS.md and `doctrine/` - stays on `no-mistakes`, because it reads like text and behaves like code.
+  AGENTS.md is the case people will get wrong: the quote above names it only as a gesture at "text files", but an agent loads and acts on it every session, so it and `doctrine/` are the most executed text in the system and one wrong sentence there changes how the whole fleet behaves; the captain agreed with the executed-words test when it was put to him explicitly, so the test governs rather than his example.
+  The fast path never lowers a rigor level the captain set deliberately for a project: this test decides how much checking prose needs only where no stronger standing posture already applies, so on a `no-mistakes-prod-only` project product-facing documentation keeps the full path.
+  **When genuinely unsure, take the full path** and say why in one line.
+  The line is drawn at execution rather than file type because two defects on 2026-08-10 were pure wording changes in text files that broke live behavior: the internal label `RESPONSE_TIME_SENTENCE:` leaked verbatim into client-facing replies in 3 of 5 live attempts, and a refusal template told the MSP owner to "contact your IT administrator" - himself - because one shared string served two audiences.
+  Neither was caught by reading the change and both were caught by running it, so revisit this boundary if that stops holding in either direction.
 
 ## Communication style
 
