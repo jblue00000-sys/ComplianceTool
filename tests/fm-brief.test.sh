@@ -217,6 +217,82 @@ test_ship_modes_generate_clean_briefs() {
   pass "fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly"
 }
 
+# The standing quality bar has exactly one owner: the fenced block in tracked
+# doctrine/captain-principles.md. Every ship brief must carry that block verbatim
+# and route it to the reviewing agent through --intent, and a root with no block
+# must refuse a ship brief rather than scaffold one with no stated bar. Fixture
+# doctrine is used so this pins the copy behavior rather than today's bar prose.
+write_bar_doctrine() {
+  local root=$1 sentinel=$2 end_fence=${3-'<!-- quality-bar:end -->'}
+  mkdir -p "$root/doctrine"
+  {
+    printf '%s\n' '## The quality bar' '' '<!-- quality-bar:start -->'
+    printf '%s\n' "$sentinel" '1. **End user.** fixture question.'
+    printf '%s\n' "$end_fence" '' '## Something else' 'not part of the bar'
+  } > "$root/doctrine/captain-principles.md"
+}
+
+test_ship_briefs_carry_the_doctrine_quality_bar() {
+  local home root brief mode id out status
+  home="$TMP_ROOT/quality-bar-home"
+  root="$TMP_ROOT/quality-bar-root"
+  mkdir -p "$home/data"
+  write_bar_doctrine "$root" "FIXTURE-BAR-ONE"
+
+  for mode in no-mistakes direct-PR local-only; do
+    id="brief-bar-$mode"
+    FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1
+    brief="$home/data/$id/brief.md"
+    assert_present "$brief" "$mode: brief was not scaffolded"
+    assert_grep "# Quality bar" "$brief" "$mode: ship brief lost the quality-bar section"
+    assert_grep "FIXTURE-BAR-ONE" "$brief" \
+      "$mode: ship brief did not copy the fenced doctrine block"
+    assert_grep "1. **End user.** fixture question." "$brief" \
+      "$mode: ship brief dropped part of the fenced doctrine block"
+    assert_no_grep "not part of the bar" "$brief" \
+      "$mode: ship brief copied doctrine prose from outside the fence"
+    assert_grep "Do not report done until you can answer every question above yes" "$brief" \
+      "$mode: ship brief lost the worker's own yes/no gate on the bar"
+  done
+
+  # Editing doctrine changes every future brief: the bar is copied, not restated.
+  write_bar_doctrine "$root" "FIXTURE-BAR-TWO"
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$ROOT/bin/fm-brief.sh" brief-bar-edited some-proj --mode no-mistakes >/dev/null 2>&1
+  brief="$home/data/brief-bar-edited/brief.md"
+  assert_grep "FIXTURE-BAR-TWO" "$brief" "an edited doctrine bar did not reach a new brief"
+  assert_no_grep "FIXTURE-BAR-ONE" "$brief" "a new brief kept the superseded doctrine bar"
+
+  # The reviewing agent only ever sees --intent, so the no-mistakes DOD must
+  # route the bar there and demand a per-question verdict.
+  assert_grep "end that \`--intent\` with this brief's \`# Quality bar\` block copied verbatim" "$brief" \
+    "no-mistakes DOD does not route the quality bar into --intent"
+  assert_grep "answer each numbered question yes or no about the finished change and record every no as a required finding" \
+    "$brief" "no-mistakes DOD does not require a yes/no verdict per bar question"
+  assert_grep "a bar left out of \`--intent\` is a bar nobody checks" "$brief" \
+    "no-mistakes DOD lost the reason the bar must travel in --intent"
+
+  # An opened but never closed fence would swallow the doctrine below it, so it
+  # must refuse just as loudly as a missing block rather than over-copy silently.
+  write_bar_doctrine "$root" "FIXTURE-BAR-TWO" '<!-- quality-bar:finish -->'
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$ROOT/bin/fm-brief.sh" brief-bar-unterminated some-proj --mode no-mistakes 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a ship brief scaffolded from an unterminated quality-bar fence"
+  assert_contains "$out" "quality-bar:end" "the refusal did not name the missing end fence"
+  assert_absent "$home/data/brief-bar-unterminated/brief.md" \
+    "a refused ship scaffold still wrote a brief from an unterminated fence"
+
+  # No block means no stated bar: refuse the ship brief, keep scouts working.
+  rm -rf "${root:?}/doctrine"
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$ROOT/bin/fm-brief.sh" brief-bar-missing some-proj --mode no-mistakes 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a ship brief scaffolded with no quality-bar block in doctrine"
+  assert_contains "$out" "no quality-bar block found" "the refusal did not name the missing block"
+  assert_absent "$home/data/brief-bar-missing/brief.md" "a refused ship scaffold still wrote a brief"
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$ROOT/bin/fm-brief.sh" brief-bar-scout some-proj --scout >/dev/null 2>&1 \
+    || fail "the ship-only quality-bar requirement blocked a scout scaffold"
+  pass "fm-brief.sh: ship briefs copy the doctrine quality bar and route it to the reviewer"
+}
+
 # A ship task's delivery mode is firstmate's per-task decision, so a missing or
 # unusable value must stop the scaffold instead of silently defaulting. The
 # no-mistakes-prod-only row is the conditional registry policy: it is never a task
@@ -714,6 +790,7 @@ test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
 test_ship_modes_generate_clean_briefs
+test_ship_briefs_carry_the_doctrine_quality_bar
 test_ship_mode_is_required_and_closed_set
 test_ship_mode_is_explicit_not_registry
 test_delivery_flags_are_refused_where_they_do_not_apply

@@ -711,13 +711,24 @@ trap spawn_abort_cleanup EXIT
 # One bounded lock per live Herdr session/socket, shared across all homes.
 # <session> is required so secondmate and primary spawns serialize against the
 # same session without writing any other home's state directory.
+# The bound is 50 tenth-second attempts (5s) so a genuinely stuck holder degrades
+# to the flat layout quickly. FM_SPAWN_HERDR_PRESENTATION_LOCK_ATTEMPTS is the
+# test seam for that bound: a concurrency test needs the waiter to outlast the
+# holder's whole in-lock spawn on any machine, and a contention test needs the
+# waiter to give up promptly. A non-positive-integer value keeps the default.
 spawn_herdr_presentation_order_lock_acquire() {
-  local session=${1:-} attempt lock_path
+  local session=${1:-} attempt attempts lock_path
   [ -n "$session" ] || session=$(fm_backend_herdr_session)
   lock_path=$(fm_backend_herdr_presentation_session_lock_path "$session") || return 1
   HERDR_PRESENTATION_ORDER_LOCK="$lock_path"
+  attempts=50
+  case "${FM_SPAWN_HERDR_PRESENTATION_LOCK_ATTEMPTS:-}" in
+    ''|*[!0-9]*) : ;;
+    0) : ;;
+    *) attempts=$FM_SPAWN_HERDR_PRESENTATION_LOCK_ATTEMPTS ;;
+  esac
   attempt=0
-  while [ "$attempt" -lt 50 ]; do
+  while [ "$attempt" -lt "$attempts" ]; do
     if fm_lock_try_acquire "$HERDR_PRESENTATION_ORDER_LOCK"; then
       HERDR_PRESENTATION_ORDER_LOCK_HELD=1
       return 0

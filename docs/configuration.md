@@ -141,6 +141,7 @@ Both are printed in the session-start context digest, each immediately before th
 The set is listed from the clone rather than named in code, so any further `doctrine/*.md` a split produces is printed with the universal material, counted in the doctrine accounting, and held to the same ceiling, with no code change; `bin/fm-doctrine-lib.sh` is the single owner of that set for both the digest and the accounting.
 Because they are tracked, a fresh clone with a completely empty `data/` still starts with them loaded: there is no seeding, copying, or first-run step to forget.
 They are also indexed by [`bin/fm-context-index`](context-index.md#what-is-indexed) alongside their local counterparts, so a promoted fact stays reachable by the same semantic search that used to find it in `data/`.
+`bin/fm-brief.sh` additionally reads the fenced quality-bar block that [`captain-principles.md`](../doctrine/captain-principles.md) owns and refuses to scaffold a ship brief when it is missing or unterminated, so keep both fence comments intact when editing that file.
 
 A fact belongs in `doctrine/` when it would still be true if this environment were building a different application, and in the home's gitignored `data/captain.md` or `data/learnings.md` when it depends on this instance, its projects, its machine, or its current focus.
 When one entry has both halves - a standing rule and its concrete local application - the rule goes to `doctrine/` and the local file keeps only the application, with no restatement of the rule.

@@ -490,7 +490,8 @@ Preserve durable structured identifiers, dependencies, and completion artifact l
 ## 11. Crewmate briefs
 
 `bin/fm-brief.sh` and its help own scaffold syntax, generated variants, status protocol, delivery-mode definitions of done, and exact safety mechanics.
-Use its scaffold as the contract, then replace every `{TASK}` placeholder with a clear task description, acceptance criteria, constraints, and necessary context before dispatch or seeding.
+Use its scaffold as the contract, then replace every `{TASK}` placeholder with a clear task description, acceptance criteria each written so a reviewer can answer it yes or no, constraints, and necessary context before dispatch or seeding.
+Every ship brief carries the standing quality bar copied from tracked `doctrine/captain-principles.md` and requires it to reach the reviewing agent; change that bar at its owner, never in a brief.
 Keep additions task-specific rather than repeating lifecycle instructions, and alter generated sections only when the task genuinely differs from the standard shape.
 
 Every ship brief must retain the worktree-isolation assertion and stop if launched in the primary checkout.

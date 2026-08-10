@@ -380,6 +380,16 @@ make_project() {  # <dir>
   git -C "$dir" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm initial
 }
 
+# The concurrency cases below assert that two real spawns serialize under the
+# shared session presentation lock, which only holds while the waiting spawn
+# outlasts the holder's entire in-lock sequence. The production bound is 5s, so
+# on a slow runner the loser would silently fall back flat and the assertion
+# would race. Every spawn here therefore waits long enough to be serialized, and
+# the deliberate-contention cases below opt back down to a prompt give-up.
+PRESENTATION_LOCK_ATTEMPTS_SERIALIZED=600
+PRESENTATION_LOCK_ATTEMPTS_CONTENDED=5
+export FM_SPAWN_HERDR_PRESENTATION_LOCK_ATTEMPTS=$PRESENTATION_LOCK_ATTEMPTS_SERIALIZED
+
 spawn_task() {  # <id> <home> <project>
   local id=$1 home=$2 project=$3
   FM_GATE_REFUSE_BYPASS=1 FM_SPAWN_NO_GUARD=1 FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
@@ -677,7 +687,8 @@ while [ ! -e "$LOCK_CONTENTION_READY" ] && kill -0 "$LOCK_CONTENTION_OWNER_PID" 
 LOCK_CONTENTION_START=$(log_line_count)
 LOCK_CONTENTION_FOCUS_START=$(focus_audit_line_count)
 LOCK_CONTENTION_MOVE_START=$(wc -l < "$MOVE_CALL_LOG" | tr -d '[:space:]')
-if spawn_task lock-contended "$HOME_DIR" "$PROJECT_DIR" > "$TMP_ROOT/lock-contended.out" 2> "$TMP_ROOT/lock-contended.err"; then
+if FM_SPAWN_HERDR_PRESENTATION_LOCK_ATTEMPTS=$PRESENTATION_LOCK_ATTEMPTS_CONTENDED \
+  spawn_task lock-contended "$HOME_DIR" "$PROJECT_DIR" > "$TMP_ROOT/lock-contended.out" 2> "$TMP_ROOT/lock-contended.err"; then
   LOCK_CONTENTION_STATUS=0
 else
   LOCK_CONTENTION_STATUS=$?
@@ -1092,7 +1103,8 @@ while [ ! -e "$CROSS_LOCK_READY" ] && kill -0 "$CROSS_LOCK_PID" 2>/dev/null; do 
 [ -e "$CROSS_LOCK_READY" ] || fail "could not hold the cross-home session presentation lock"
 mkdir -p "$SECOND_HOME_A/data/aflat"
 printf 'Flat fallback under session lock contention.\n' > "$SECOND_HOME_A/data/aflat/brief.md"
-if spawn_task aflat "$SECOND_HOME_A" "$PROJECT_DIR" > "$TMP_ROOT/aflat.out" 2> "$TMP_ROOT/aflat.err"; then
+if FM_SPAWN_HERDR_PRESENTATION_LOCK_ATTEMPTS=$PRESENTATION_LOCK_ATTEMPTS_CONTENDED \
+  spawn_task aflat "$SECOND_HOME_A" "$PROJECT_DIR" > "$TMP_ROOT/aflat.out" 2> "$TMP_ROOT/aflat.err"; then
   AFLAT_STATUS=0
 else
   AFLAT_STATUS=$?

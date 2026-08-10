@@ -40,6 +40,11 @@
 # "Delivery contract: mode=<mode>" line. bin/fm-spawn.sh reads that line and refuses
 # to launch a ship task whose explicit --mode disagrees, so an adjusted brief and the
 # recorded task metadata cannot drift apart.
+# Every ship brief carries the standing quality bar, copied verbatim from the
+# fenced block in tracked doctrine/captain-principles.md, and requires it to
+# travel in the pipeline's --intent so the reviewing agent grades against it.
+# doctrine is the single owner: a missing or empty fenced block is a hard error
+# rather than a brief that silently ships with no stated bar.
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
 # --mode is refused on scout and secondmate scaffolds: a scout's deliverable is a
 # report rather than a merge, and a charter is not a delivery contract.
@@ -347,6 +352,28 @@ echo "scaffolded: $BRIEF (scout; replace {TASK})"
 exit 0
 fi
 
+# Standing quality bar: doctrine owns the text, this scaffold only copies it.
+# Fail loudly rather than scaffold a ship brief with no stated bar.
+QUALITY_BAR_SOURCE="$FM_ROOT/doctrine/captain-principles.md"
+QUALITY_BAR=
+QUALITY_BAR_STATUS=0
+if [ -r "$QUALITY_BAR_SOURCE" ]; then
+  QUALITY_BAR=$(awk '
+    /^<!-- quality-bar:end -->$/ && inside { inside = 0; closed = 1; next }
+    inside { print }
+    /^<!-- quality-bar:start -->$/ { started = 1; inside = 1 }
+    END { if (started && !closed) exit 3 }
+  ' "$QUALITY_BAR_SOURCE") || QUALITY_BAR_STATUS=$?
+fi
+[ "$QUALITY_BAR_STATUS" -eq 0 ] || {
+  echo "error: the quality-bar block in $QUALITY_BAR_SOURCE opens with <!-- quality-bar:start --> but is never closed by a matching <!-- quality-bar:end --> line; restore that end fence there so a ship brief carries the bar and nothing else" >&2
+  exit 1
+}
+[ -n "$QUALITY_BAR" ] || {
+  echo "error: no quality-bar block found in $QUALITY_BAR_SOURCE; a ship brief must carry the standing quality bar, so restore the fenced <!-- quality-bar:start --> block there rather than writing one into the brief by hand" >&2
+  exit 1
+}
+
 # Ship task: shape Setup / Rule 1 / Definition of done by this task's explicit
 # delivery mode, validated above. The generated DOD opens with the fixed
 # "Delivery contract: mode=<mode>" line that bin/fm-spawn.sh checks against its own
@@ -391,6 +418,8 @@ Firstmate will then instruct you to run /no-mistakes to validate and ship a PR.
 You drive no-mistakes by responding to its gates, not by implementing fixes.
 Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke /no-mistakes, and \`no-mistakes axi run --help\` plus the \`help\` lines in each \`axi\` response are authoritative and version-matched to the installed binary.
 When starting no-mistakes, make \`--intent\` preserve all relevant content from this brief's \`# Task\` section plus every later accepted Firstmate requirement, clarification, constraint, exclusion, and supersession, carrying only each requirement's current accepted form; retain direct requirements instead of substituting a diff summary, and exclude generic operational, status, delivery, and other scaffold boilerplate unless it is task-specific.
+Then end that \`--intent\` with this brief's \`# Quality bar\` block copied verbatim, introduced by the line \`Required checklist: answer each numbered question yes or no about the finished change and record every no as a required finding.\`
+The reviewing agent never sees this brief and treats \`--intent\` as authoritative acceptance criteria, so a bar left out of \`--intent\` is a bar nobody checks.
 Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
 
 Two firstmate-specific rules layer on top of that guidance:
@@ -414,6 +443,13 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 
 # Task
 {TASK}
+
+# Quality bar
+The captain's standing bar for every change, applying on top of the task above.
+
+$QUALITY_BAR
+
+Do not report done until you can answer every question above yes, or until your done line states plainly which one you could not and why.
 
 $HERDR_SECTION
 

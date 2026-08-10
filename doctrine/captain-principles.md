@@ -53,15 +53,30 @@ Change it through the ordinary firstmate branch, pipeline, and PR path, then let
 - Never silently change a worker's model or effort tier.
   Tier changes are the captain's.
 
-## Delivery: end-user simplicity is part of the feature
+## The quality bar
 
-- **Every feature is shaped around the non-technical end user and must be as simple as possible for them.**
-  Captain's instruction: "part of the process of delivering these features is having the end user in mind and making it as simple as possible for them."
-- Treat it as an acceptance dimension in every ship brief, not an afterthought: what does the end user actually see and do, how many steps, and could a non-technical person complete it unaided on a phone?
-  A flow that works but needs developer knowledge - copy a token out of browser devtools, read an error code, run a command - is not done.
-- The lesson that produced this rule: a feature shipped technically working, passed its pipeline, and was rejected on sight because a real person could not reasonably complete it.
-  "The pipeline passed" never substitutes for "a real person could do this."
-- Record the same bar in each application's own committed `AGENTS.md` so workers inherit it without firstmate restating it in every brief.
+The captain's standard, in his words: "Simplicity and speed. End user's experience needs to be the baseline for anything that is built."
+The lesson that set it: a feature shipped technically working, passed its pipeline, and was rejected on sight because a real person could not reasonably complete it.
+"The pipeline passed" never substitutes for "a real person could do this."
+
+`bin/fm-brief.sh` copies the fenced block below into every ship brief verbatim, and that brief requires it to travel in the validation pipeline's `--intent`, which the reviewing agent treats as authoritative acceptance criteria.
+Edit the block here and every future brief and review inherits the change; never restate it in a brief by hand.
+Record the same bar in each application's own committed `AGENTS.md` so its contributors inherit it too.
+
+<!-- quality-bar:start -->
+Answer these four questions about the finished work, in this order, before calling it done.
+Each is yes or no: "mostly", "sort of", and a silent "not applicable" are all no, and any no is a defect to fix or an exception to state out loud.
+They are weighted at simplicity, speed, and the end user rather than at craft and correctness, which are already the default strength.
+
+1. **End user.** Could a non-technical person get through this unaided on a phone, without copying a token, reading an error code, or running a command?
+   If the change has no user-facing surface, answer instead whether it leaves every user-facing path it touches no harder than it found it.
+2. **Simplicity.** Is this the smallest change that delivers the asked-for behavior?
+   Name every file, flag, dependency, setting, or layer of indirection it adds, and say in one sentence why the direct path could not carry it; an unnamed addition is a no.
+3. **Speed.** Is it still fast for the person waiting on it?
+   Name every network call, scan, poll, retry, or added wait it puts on a path someone waits on; an unaccounted addition on such a path is a no.
+4. **What was asked.** Does it satisfy this job's definition of done, all of it, and add nothing beyond it?
+   Take each stated acceptance criterion in turn and answer yes or no, then name anything delivered that was not asked for and anything asked for that is missing.
+<!-- quality-bar:end -->
 
 ## Environment architecture: one instance per application
 
