@@ -112,6 +112,10 @@
 #   default-branch commit when safe; skipped syncs warn and launch unchanged.
 #   Ship/scout spawns refuse to launch unless the resolved task path is a real
 #   git worktree root distinct from the primary project checkout.
+#   A spawn also refuses while a cross-check opened on this task's instructions
+#   is still unfinished (bin/fm-crosscheck.sh gate; a task that never opened one
+#   is unaffected), because dispatch is the boundary that cross-check sits in
+#   front of.
 # Batch dispatch: pass one or more `id=repo` pairs instead of a single <id> <project>, e.g.
 #     fm-spawn.sh fix-a-k3=projects/foo add-b-q7=projects/bar [--scout]
 #   Each pair re-execs this script in single-task mode, so the single path stays the only
@@ -1339,6 +1343,17 @@ else
   BRIEF="$DATA/$ID/brief.md"
 fi
 [ -f "$BRIEF" ] || { echo "error: no brief at $BRIEF" >&2; exit 1; }
+
+# Cross-check gate. When this task's instructions were put through the
+# author/challenger cross-check (.agents/skills/crosscheck-rounds/SKILL.md),
+# dispatch is the boundary that cross-check exists to sit in front of, so an
+# unfinished one must stop the launch rather than be remembered. Presence-gated:
+# a task that never opened a cross-check runs one [ -f ] test inside the helper
+# and is unaffected.
+if ! FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" "$FM_ROOT/bin/fm-crosscheck.sh" gate "$ID"; then
+  echo "error: refusing to dispatch $ID while its instructions are still under cross-check; finish or close it with bin/fm-crosscheck.sh" >&2
+  exit 1
+fi
 
 delivery_rigor_rank() {  # <mode> -> 3 (most rigor) .. 1 (least); 0 = not a task mode
   case "$1" in

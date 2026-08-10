@@ -27,8 +27,10 @@
 # for the common case where there is no remote at all.
 # Scout tasks (kind=scout in meta) carve out of that check: their worktree is
 # declared scratch and the report at data/<task-id>/report.md is the work
-# product. Teardown proceeds only once the report exists and the shared
-# unresolved-decision completion gate verifies its captain-held inventory.
+# product. Teardown proceeds only once the report exists, the shared
+# unresolved-decision completion gate verifies its captain-held inventory, and
+# any cross-check opened on the report has reached a verdict
+# (bin/fm-crosscheck.sh gate; a scout that never opened one is unaffected).
 # Before destructive cleanup, teardown validates task check artifacts and any
 # matching quarantine entries as ordinary single-link files on the state
 # device. It refuses and preserves task state when that proof fails; otherwise
@@ -2151,6 +2153,15 @@ if [ "$KIND" = scout ] && [ "$FORCE" != "--force" ]; then
       FM_CONFIG_OVERRIDE="$CONFIG" "$SCRIPT_DIR/fm-decision-hold.sh" verify "$ID" >/dev/null; then
     echo "REFUSED: scout task $ID has not passed the unresolved-decision completion gate." >&2
     echo "Inventory its report and any visual review through bin/fm-decision-hold.sh before teardown." >&2
+    exit 1
+  fi
+  # Same shape for the findings cross-check: an opened cross-check on this
+  # report must reach a verdict before the scratch worktree that could answer
+  # its objections is discarded (.agents/skills/crosscheck-rounds/SKILL.md).
+  if ! FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" \
+      "$SCRIPT_DIR/fm-crosscheck.sh" gate "$ID"; then
+    echo "REFUSED: scout task $ID has an unfinished cross-check on its findings." >&2
+    echo "Finish or close it through bin/fm-crosscheck.sh before teardown." >&2
     exit 1
   fi
 fi
