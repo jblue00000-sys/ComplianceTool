@@ -9,6 +9,22 @@ set -u
 
 # shellcheck source=tests/secondmate-helpers.sh disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/secondmate-helpers.sh"
+# shellcheck source=bin/fm-worker-rules-lib.sh
+. "$ROOT/bin/fm-worker-rules-lib.sh"
+
+# A scaffolded crewmate brief holds only its task-specific half; the standing
+# rules reach the worker when bin/fm-spawn.sh composes the launch prompt from
+# tracked worker-rules.md. Assertions about what a worker is actually told
+# therefore run against that composed prompt, produced here through the same
+# fm_worker_rules_compose() the spawn path calls.
+launch_prompt() {  # <home> <id>
+  local home=$1 id=$2 composed out
+  out="$home/data/$id/launch-prompt.md"
+  fm_worker_rules_compose "$home/data/$id/brief.md" "$id" "$home/state" "$home/data" \
+    "$ROOT" composed || fail "$id: could not compose the launch prompt from its brief"
+  printf '%s\n' "$composed" > "$out"
+  printf '%s\n' "$out"
+}
 
 TMP_ROOT=$(fm_test_tmproot fm-secondmate-safety)
 export FM_BACKEND=tmux
@@ -48,7 +64,7 @@ SH
 }
 
 test_fm_home_parameterization() {
-  local brief home_one home_two out
+  local brief prompt home_one home_two out
   home_one="$TMP_ROOT/home one"
   home_two="$TMP_ROOT/home-two"
   mkdir -p "$home_one/data" "$home_one/state" "$home_two/data" "$home_two/state"
@@ -62,11 +78,12 @@ test_fm_home_parameterization() {
   FM_HOME="$home_one" "$ROOT/bin/fm-brief.sh" task-a app --mode no-mistakes >/dev/null || fail "brief scaffold failed under FM_HOME"
   brief="$home_one/data/task-a/brief.md"
   [ -f "$brief" ] || fail "brief was not written under FM_HOME/data"
-  grep -F ">> '$home_one/state/task-a.status'" "$brief" >/dev/null || fail "brief did not shell-quote FM_HOME state path"
+  prompt=$(launch_prompt "$home_one" task-a)
+  grep -F ">> '$home_one/state/task-a.status'" "$prompt" >/dev/null || fail "launch prompt did not shell-quote FM_HOME state path"
 
   FM_HOME="$home_one" "$ROOT/bin/fm-brief.sh" task-b app --scout >/dev/null || fail "scout brief scaffold failed under FM_HOME"
-  brief="$home_one/data/task-b/brief.md"
-  grep -F ">> '$home_one/state/task-b.status'" "$brief" >/dev/null || fail "scout brief did not shell-quote FM_HOME state path"
+  prompt=$(launch_prompt "$home_one" task-b)
+  grep -F ">> '$home_one/state/task-b.status'" "$prompt" >/dev/null || fail "scout launch prompt did not shell-quote FM_HOME state path"
 
   FM_HOME="$home_one" FM_SECONDMATE_CHARTER='ops domain' "$ROOT/bin/fm-brief.sh" task-c --secondmate app >/dev/null \
     || fail "secondmate brief scaffold failed under FM_HOME"

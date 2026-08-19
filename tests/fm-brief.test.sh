@@ -22,6 +22,26 @@ TMP_ROOT=$(fm_test_tmproot fm-brief)
 BRIEF_HOME="$TMP_ROOT/home"
 mkdir -p "$BRIEF_HOME/data"
 
+# shellcheck source=bin/fm-worker-rules-lib.sh
+. "$ROOT/bin/fm-worker-rules-lib.sh"
+
+# A scaffolded crewmate brief holds only its task-specific half; the standing
+# rules reach the worker when bin/fm-spawn.sh composes the launch prompt from
+# tracked worker-rules.md. Assertions about what a worker is actually told
+# therefore run against that composed prompt, produced here through the same
+# fm_worker_rules_compose() the spawn path calls. Assertions about what the
+# scaffold WROTE still run against the brief file itself.
+# Prints the composed launch prompt's path; fails loudly rather than returning a
+# brief whose rules were silently never composed.
+launch_prompt() {  # <home> <id> [fm-root]
+  local home=$1 id=$2 root=${3:-$ROOT} composed out
+  out="$home/data/$id/launch-prompt.md"
+  fm_worker_rules_compose "$home/data/$id/brief.md" "$id" "$home/state" "$home/data" \
+    "$root" composed || fail "$id: could not compose the launch prompt from its brief"
+  printf '%s\n' "$composed" > "$out"
+  printf '%s\n' "$out"
+}
+
 # The script itself must always parse under the ambient bash. That is Bash 5 in
 # CI and locally, where the issue #958/#1069 parser bug does not fire, so this
 # is a weak guard on its own; test_no_heredoc_in_command_substitution and the
@@ -204,15 +224,15 @@ test_ship_modes_generate_clean_briefs() {
     mode=${id_mode##*:}
     FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1; status=$?
     expect_code 0 "$status" "fm-brief.sh $id --mode $mode should exit 0"
-    brief="$home/data/$id/brief.md"
-    assert_present "$brief" "$id: brief was not scaffolded"
-    assert_grep "# Definition of done" "$brief" "$id: brief missing Definition of done section"
+    assert_present "$home/data/$id/brief.md" "$id: brief was not scaffolded"
+    assert_grep "{TASK}" "$home/data/$id/brief.md" "$id: brief missing the {TASK} placeholder"
+    brief=$(launch_prompt "$home" "$id")
+    assert_grep "# Definition of done" "$brief" "$id: launch prompt missing Definition of done section"
     grep -qx "Delivery contract: mode=$mode" "$brief" \
-      || fail "$id: brief did not record its machine-readable delivery contract line"
-    assert_grep "{TASK}" "$brief" "$id: brief missing the {TASK} placeholder"
+      || fail "$id: launch prompt did not record its machine-readable delivery contract line"
     assert_grep "mid-task \`working:\` line (including setup complete) is nonterminal" "$brief" \
-      "$id: brief missing nonterminal working:/setup-complete gate protection"
-    assert_no_grep "EOF" "$brief" "$id: brief leaked a heredoc EOF marker (unterminated heredoc)"
+      "$id: launch prompt missing nonterminal working:/setup-complete gate protection"
+    assert_no_grep "EOF" "$brief" "$id: launch prompt leaked a heredoc EOF marker (unterminated heredoc)"
   done
   pass "fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly"
 }
@@ -222,9 +242,12 @@ test_ship_modes_generate_clean_briefs() {
 # and route it to the reviewing agent through --intent, and a root with no block
 # must refuse a ship brief rather than scaffold one with no stated bar. Fixture
 # doctrine is used so this pins the copy behavior rather than today's bar prose.
+# The fixture root stands in for a firstmate code root, so it needs the tracked
+# rules file the render reads alongside its fixture doctrine.
 write_bar_doctrine() {
   local root=$1 sentinel=$2 end_fence=${3-'<!-- quality-bar:end -->'}
-  mkdir -p "$root/doctrine"
+  mkdir -p "$root/doctrine" "$root/bin"
+  ln -sf "$ROOT/worker-rules.md" "$root/worker-rules.md"
   {
     printf '%s\n' '## The quality bar' '' '<!-- quality-bar:start -->'
     printf '%s\n' "$sentinel" '1. **End user.** fixture question.'
@@ -242,8 +265,8 @@ test_ship_briefs_carry_the_doctrine_quality_bar() {
   for mode in no-mistakes direct-PR local-only; do
     id="brief-bar-$mode"
     FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1
-    brief="$home/data/$id/brief.md"
-    assert_present "$brief" "$mode: brief was not scaffolded"
+    assert_present "$home/data/$id/brief.md" "$mode: brief was not scaffolded"
+    brief=$(launch_prompt "$home" "$id" "$root")
     assert_grep "# Quality bar" "$brief" "$mode: ship brief lost the quality-bar section"
     assert_grep "FIXTURE-BAR-ONE" "$brief" \
       "$mode: ship brief did not copy the fenced doctrine block"
@@ -258,7 +281,7 @@ test_ship_briefs_carry_the_doctrine_quality_bar() {
   # Editing doctrine changes every future brief: the bar is copied, not restated.
   write_bar_doctrine "$root" "FIXTURE-BAR-TWO"
   FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$ROOT/bin/fm-brief.sh" brief-bar-edited some-proj --mode no-mistakes >/dev/null 2>&1
-  brief="$home/data/brief-bar-edited/brief.md"
+  brief=$(launch_prompt "$home" brief-bar-edited "$root")
   assert_grep "FIXTURE-BAR-TWO" "$brief" "an edited doctrine bar did not reach a new brief"
   assert_no_grep "FIXTURE-BAR-ONE" "$brief" "a new brief kept the superseded doctrine bar"
 
@@ -280,6 +303,23 @@ test_ship_briefs_carry_the_doctrine_quality_bar() {
   assert_contains "$out" "quality-bar:end" "the refusal did not name the missing end fence"
   assert_absent "$home/data/brief-bar-unterminated/brief.md" \
     "a refused ship scaffold still wrote a brief from an unterminated fence"
+
+  # A doctrine file that exists but cannot be read reaches the same refusal, and
+  # under `set -eu` an unset local would abort there instead of printing it.
+  write_bar_doctrine "$root" "FIXTURE-BAR-TWO"
+  chmod 000 "$root/doctrine/captain-principles.md"
+  if [ -r "$root/doctrine/captain-principles.md" ]; then
+    chmod 644 "$root/doctrine/captain-principles.md"
+  else
+    out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$ROOT/bin/fm-brief.sh" brief-bar-unreadable some-proj --mode no-mistakes 2>&1)
+    status=$?
+    chmod 644 "$root/doctrine/captain-principles.md"
+    [ "$status" -ne 0 ] || fail "a ship brief scaffolded from an unreadable doctrine file"
+    assert_contains "$out" "no quality-bar block found" \
+      "the unreadable-doctrine refusal did not name the missing block"
+    assert_absent "$home/data/brief-bar-unreadable/brief.md" \
+      "a refused ship scaffold still wrote a brief from an unreadable doctrine file"
+  fi
 
   # No block means no stated bar: refuse the ship brief, keep scouts working.
   rm -rf "${root:?}/doctrine"
@@ -329,7 +369,7 @@ test_ship_mode_is_explicit_not_registry() {
   write_registry "$home"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-explicit-a5 direct-proj --mode no-mistakes >/dev/null 2>&1 \
     || fail "explicit no-mistakes brief on a direct-PR project should scaffold"
-  brief="$home/data/brief-explicit-a5/brief.md"
+  brief=$(launch_prompt "$home" brief-explicit-a5)
   grep -qx "Delivery contract: mode=no-mistakes" "$brief" \
     || fail "registered direct-PR posture overrode the explicit --mode"
   assert_grep "Firstmate will then instruct you to run /no-mistakes" "$brief" \
@@ -338,7 +378,7 @@ test_ship_mode_is_explicit_not_registry() {
   # An unregistered project is not a blocker either, because nothing is looked up.
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-explicit-a6 never-registered --mode local-only >/dev/null 2>&1 \
     || fail "unregistered project should still scaffold from the explicit mode"
-  grep -qx "Delivery contract: mode=local-only" "$home/data/brief-explicit-a6/brief.md" \
+  grep -qx "Delivery contract: mode=local-only" "$(launch_prompt "$home" brief-explicit-a6)" \
     || fail "unregistered project did not honour the explicit --mode"
   pass "fm-brief.sh: the explicit ship mode wins over the registered posture"
 }
@@ -372,25 +412,25 @@ test_faster_paths_use_configured_authority_without_stacked_review() {
   write_registry "$home"
   id="brief-direct-authority-a4"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" direct-proj --mode direct-PR >/dev/null 2>&1
-  brief="$home/data/$id/brief.md"
+  brief=$(launch_prompt "$home" "$id")
   assert_grep "The configured merge authority decides whether to merge the PR; firstmate relays the outcome." "$brief" \
     "direct-PR brief lost configured merge authority"
   assert_no_grep "The captain reviews and merges the PR" "$brief" \
     "direct-PR brief hard-coded captain-only authority"
   id="brief-local-authority-a4"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" local-proj --mode local-only >/dev/null 2>&1
-  brief="$home/data/$id/brief.md"
+  brief=$(launch_prompt "$home" "$id")
   assert_grep "The configured merge authority approves the ready branch, then firstmate merges it into local \`main\` through the guarded fast-forward path." "$brief" \
     "local-only brief lost configured merge authority and guarded landing"
   assert_no_grep "The captain approves the ready branch" "$brief" \
     "local-only brief hard-coded captain-only authority"
   assert_no_grep "Firstmate then reviews your branch diff" "$brief" \
     "local-only brief retained a personal review stacked on the selected delivery path"
-  assert_no_grep "make \`--intent\` preserve all relevant content from this brief" "$home/data/$id/brief.md" \
+  assert_no_grep "make \`--intent\` preserve all relevant content from this brief" "$brief" \
     "local-only brief must not include the no-mistakes --intent contract"
   id="brief-direct-intent-a4"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" direct-proj --mode direct-PR >/dev/null 2>&1
-  assert_no_grep "make \`--intent\` preserve all relevant content from this brief" "$home/data/$id/brief.md" \
+  assert_no_grep "make \`--intent\` preserve all relevant content from this brief" "$(launch_prompt "$home" "$id")" \
     "direct-PR brief must not include the no-mistakes --intent contract"
   pass "fm-brief.sh: faster paths use configured authority without stacked review"
 }
@@ -403,8 +443,8 @@ test_no_mistakes_dod_wording() {
   mkdir -p "$home/data"
   id="brief-wording-b1"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1
-  brief="$home/data/$id/brief.md"
-  assert_present "$brief" "brief was not scaffolded"
+  assert_present "$home/data/$id/brief.md" "brief was not scaffolded"
+  brief=$(launch_prompt "$home" "$id")
   assert_grep "no-mistakes itself provides for the mechanics" "$brief" \
     "no-mistakes DOD lost its guidance-reference sentence"
   # shellcheck disable=SC2016  # single quotes are deliberate: the backticks must stay literal
@@ -436,8 +476,8 @@ test_ship_project_memory_wording() {
   mkdir -p "$home/data"
   id="brief-memory-c1"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1
-  brief="$home/data/$id/brief.md"
-  assert_present "$brief" "brief was not scaffolded"
+  assert_present "$home/data/$id/brief.md" "brief was not scaffolded"
+  brief=$(launch_prompt "$home" "$id")
   assert_grep "Record only project knowledge useful to almost every future session." "$brief" \
     "project-memory contract lost the durable-knowledge bar"
   assert_grep "prefer a pointer to the authoritative file, command, or doc over copying the detail" "$brief" \
@@ -453,8 +493,8 @@ test_herdr_lab_contract_is_explicit_and_complete() {
   mkdir -p "$home/data"
   id="brief-herdr-lab-d1"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes --herdr-lab >/dev/null 2>&1
-  brief="$home/data/$id/brief.md"
-  assert_present "$brief" "Herdr lab brief was not scaffolded"
+  assert_present "$home/data/$id/brief.md" "Herdr lab brief was not scaffolded"
+  brief=$(launch_prompt "$home" "$id")
   assert_grep "# Herdr isolation - HARD SAFETY CONTRACT" "$brief" \
     "Herdr lab brief missing its hard safety contract"
   assert_grep "HERDR_LAB_HELPER='$ROOT/bin/fm-herdr-lab.sh'" "$brief" \
@@ -482,12 +522,13 @@ test_herdr_lab_contract_quotes_foreign_firstmate_path() {
   local home id brief foreign_root helper
   home="$TMP_ROOT/herdr-lab-foreign-home"
   foreign_root="$TMP_ROOT/firstmate helper's root"
-  mkdir -p "$home/data"
+  mkdir -p "$home/data" "$foreign_root"
+  ln -sf "$ROOT/worker-rules.md" "$foreign_root/worker-rules.md"
   id="brief-herdr-lab-foreign-d2"
   helper=$(printf '%s' "$foreign_root/bin/fm-herdr-lab.sh" | sed "s/'/'\\\\''/g")
   helper="'$helper'"
   FM_HOME="$home" FM_ROOT_OVERRIDE="$foreign_root" "$ROOT/bin/fm-brief.sh" "$id" foreign --scout --herdr-lab >/dev/null 2>&1
-  brief="$home/data/$id/brief.md"
+  brief=$(launch_prompt "$home" "$id" "$foreign_root")
   assert_grep "HERDR_LAB_HELPER=$helper" "$brief" \
     "Herdr lab brief must shell-quote an absolute Firstmate helper path"
   assert_no_grep "bin/fm-herdr-lab.sh name $id" "$brief" \
@@ -506,7 +547,7 @@ test_herdr_lab_omission_is_loud_for_ship_and_scout() {
     else
       FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes >/dev/null 2>&1
     fi
-    brief="$home/data/$id/brief.md"
+    brief=$(launch_prompt "$home" "$id")
     assert_grep "# Herdr lifecycle declaration - NOT ENABLED" "$brief" \
       "$kind brief silently omitted the Herdr declaration"
     assert_grep "regenerate the brief with \`--herdr-lab\` before dispatch" "$brief" \
@@ -698,7 +739,7 @@ test_herdr_lab_contract_applies_to_scouts_but_not_secondmates() {
   home="$TMP_ROOT/herdr-kind-home"
   mkdir -p "$home/data"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" herdr-scout firstmate --scout --herdr-lab >/dev/null 2>&1
-  brief="$home/data/herdr-scout/brief.md"
+  brief=$(launch_prompt "$home" herdr-scout)
   assert_grep "# Herdr isolation - HARD SAFETY CONTRACT" "$brief" \
     "scout --herdr-lab brief missing the contract"
 
@@ -730,7 +771,11 @@ test_pause_verb_override_renders_all_brief_scaffolds() {
           "$ROOT/bin/fm-brief.sh" "$id" --secondmate --no-projects >/dev/null 2>&1
         ;;
     esac
-    brief="$home/data/$id/brief.md"
+    if [ "$kind" = secondmate ]; then
+      brief="$home/data/$id/brief.md"
+    else
+      brief=$(FM_CLASSIFY_PAUSED_VERB=awaiting launch_prompt "$home" "$id")
+    fi
     assert_grep "States: working, needs-decision, blocked, awaiting, done, failed." "$brief" \
       "$kind brief did not render the configured pause verb in its states list"
     # shellcheck disable=SC2016 # Literal backticks and braces must remain unexpanded.
@@ -753,7 +798,7 @@ test_scout_and_secondmate_load_decision_hold_policy() {
   mkdir -p "$home/data"
   FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
     "$ROOT/bin/fm-brief.sh" sample-investigation sample --scout >/dev/null 2>&1
-  scout="$home/data/sample-investigation/brief.md"
+  scout=$(launch_prompt "$home" sample-investigation)
   assert_grep "$ROOT/.agents/skills/decision-hold-lifecycle/SKILL.md" "$scout" \
     "scout brief did not load the unresolved-decision policy before done"
   assert_grep "pass its shared completion gate for the report and any visual review" "$scout" \
@@ -771,8 +816,8 @@ test_scout_and_secondmate_scaffold() {
   local brief
   FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" brief-scout-q6 alpha --scout >/dev/null 2>&1 \
     || fail "fm-brief.sh scout scaffold exited non-zero"
-  brief="$BRIEF_HOME/data/brief-scout-q6/brief.md"
-  assert_present "$brief" "scout brief was not scaffolded"
+  assert_present "$BRIEF_HOME/data/brief-scout-q6/brief.md" "scout brief was not scaffolded"
+  brief=$(launch_prompt "$BRIEF_HOME" brief-scout-q6)
   assert_grep "SCOUT task" "$brief" "scout brief must declare itself a scout task"
   assert_grep "report.md" "$brief" "scout brief must point at the report deliverable"
 
@@ -786,8 +831,204 @@ test_scout_and_secondmate_scaffold() {
   pass "fm-brief: scout and secondmate code paths still scaffold well-formed briefs"
 }
 
+# The whole point of the standing rules living in worker-rules.md: a scaffolded
+# brief must stop carrying its own copy, while the worker still receives the
+# rules whole in the composed launch prompt.
+test_standing_rules_are_not_copied_into_the_brief() {
+  local home id brief prompt brief_bytes prompt_bytes
+  home="$TMP_ROOT/by-reference-home"
+  mkdir -p "$home/data"
+  id="brief-by-reference-r1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1 \
+    || fail "ship scaffold exited non-zero"
+  brief="$home/data/$id/brief.md"
+
+  assert_grep "worker-rules: v1 kind=ship mode=no-mistakes herdr-lab=off repo=some-proj" "$brief" \
+    "the brief does not declare which standing rules variant it needs"
+  assert_no_grep "# Rules" "$brief" "the brief still copies the standing rules section"
+  assert_no_grep "# Setup" "$brief" "the brief still copies the standing setup section"
+  assert_no_grep "# Definition of done" "$brief" \
+    "the brief still copies the standing definition of done"
+  assert_no_grep "# Quality bar" "$brief" "the brief still copies the standing quality bar"
+
+  prompt=$(launch_prompt "$home" "$id")
+  # The declaration is machine-readable scaffolding, not worker instruction.
+  assert_no_grep "worker-rules: v1" "$prompt" \
+    "the composed launch prompt leaked the machine-readable declaration"
+  assert_grep "Verify isolation before anything else" "$prompt" \
+    "the composed launch prompt lost the worktree-isolation assertion"
+  assert_grep "Never push to the default branch" "$prompt" \
+    "the composed launch prompt lost rule 1"
+
+  brief_bytes=$(wc -c < "$brief" | tr -d ' ')
+  prompt_bytes=$(wc -c < "$prompt" | tr -d ' ')
+  [ "$brief_bytes" -lt 1024 ] \
+    || fail "a scaffolded ship brief should be well under 1 KB now, got $brief_bytes bytes"
+  [ "$prompt_bytes" -gt $((brief_bytes * 4)) ] \
+    || fail "the composed prompt ($prompt_bytes bytes) is not materially larger than the brief ($brief_bytes bytes), so the rules were not joined on"
+  pass "fm-brief.sh: the standing rules are declared by reference, not copied into the brief"
+}
+
+# "Do not make a worker read rules for a mode it is not in": each composed prompt
+# must carry its own delivery contract and none of the other two.
+test_launch_prompt_carries_only_its_own_delivery_mode() {
+  local home mode other id prompt
+  home="$TMP_ROOT/one-mode-home"
+  mkdir -p "$home/data"
+  for mode in no-mistakes direct-PR local-only; do
+    id="brief-one-mode-$mode"
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1 \
+      || fail "$mode: ship scaffold exited non-zero"
+    prompt=$(launch_prompt "$home" "$id")
+    grep -qx "Delivery contract: mode=$mode" "$prompt" \
+      || fail "$mode: composed prompt does not state its own delivery contract"
+    for other in no-mistakes direct-PR local-only; do
+      [ "$other" = "$mode" ] && continue
+      grep -qx "Delivery contract: mode=$other" "$prompt" \
+        && fail "$mode: composed prompt also carries the $other delivery contract"
+    done
+  done
+  # The scout variant is separate again: no branch, no PR, a report deliverable.
+  id="brief-one-mode-scout"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1 \
+    || fail "scout scaffold exited non-zero"
+  prompt=$(launch_prompt "$home" "$id")
+  assert_no_grep "Delivery contract: mode=" "$prompt" \
+    "a scout prompt must carry no ship delivery contract"
+  assert_grep "Never push to any remote and never open a PR" "$prompt" \
+    "a scout prompt lost its own rule 1"
+  pass "fm-brief.sh: each composed prompt carries exactly its own variant"
+}
+
+# The rules file is a hard dependency, not a best-effort lookup: a missing file,
+# an unterminated fence, or a missing block must refuse the scaffold rather than
+# produce a brief whose worker would launch short of its rules.
+test_broken_rules_file_refuses_the_scaffold() {
+  local home root out status
+  home="$TMP_ROOT/broken-rules-home"
+  root="$TMP_ROOT/broken-rules-root"
+  mkdir -p "$home/data" "$root/doctrine"
+  cp "$ROOT/doctrine/captain-principles.md" "$root/doctrine/captain-principles.md"
+
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$ROOT/bin/fm-brief.sh" broken-r1 p --mode no-mistakes 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a scaffold succeeded with no worker-rules.md at all"
+  assert_contains "$out" "no readable standing worker rules" \
+    "the refusal did not name the missing rules file"
+  assert_absent "$home/data/broken-r1/brief.md" "a refused scaffold still wrote a brief"
+
+  sed 's|^<!-- rules:ship-dod-no-mistakes:end -->$|<!-- rules:ship-dod-no-mistakes:finish -->|' \
+    "$ROOT/worker-rules.md" > "$root/worker-rules.md"
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$ROOT/bin/fm-brief.sh" broken-r2 p --mode no-mistakes 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a scaffold succeeded from an unterminated rules fence"
+  assert_contains "$out" "rules:ship-dod-no-mistakes:end" \
+    "the refusal did not name the missing end fence"
+  assert_absent "$home/data/broken-r2/brief.md" "a refused scaffold still wrote a brief"
+
+  grep -v '^<!-- rules:ship-rule1-local-only:' "$ROOT/worker-rules.md" > "$root/worker-rules.md"
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$ROOT/bin/fm-brief.sh" broken-r3 p --mode local-only 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a scaffold succeeded with its rule 1 block removed"
+  assert_contains "$out" "rules:ship-rule1-local-only" "the refusal did not name the missing block"
+  assert_absent "$home/data/broken-r3/brief.md" "a refused scaffold still wrote a brief"
+
+  # A variant whose blocks are all present must still scaffold from that root,
+  # so the three refusals above are about the damage and not about the fixture.
+  cp "$ROOT/worker-rules.md" "$root/worker-rules.md"
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$ROOT/bin/fm-brief.sh" broken-r4 p --mode local-only >/dev/null 2>&1 \
+    || fail "an intact fixture rules file failed to scaffold"
+  pass "fm-brief.sh: a missing, unterminated, or incomplete rules file refuses the scaffold"
+}
+
+# Briefs written before this contract already contain their whole rule set, so
+# composition must decline them and leave firstmate launching them unchanged.
+test_brief_without_a_declaration_is_left_alone() {
+  local home id composed
+  home="$TMP_ROOT/legacy-brief-home"
+  id="brief-legacy-r5"
+  mkdir -p "$home/data/$id" "$home/state"
+  printf '%s\n' 'You are a crewmate.' '' '# Task' 'do the thing' '' '# Rules' '1. Never push.' \
+    > "$home/data/$id/brief.md"
+  if fm_worker_rules_compose "$home/data/$id/brief.md" "$id" "$home/state" "$home/data" \
+       "$ROOT" composed; then
+    fail "composition claimed a brief that declares no rules variant"
+  fi
+  pass "fm-brief.sh: a brief with no rules declaration is left exactly as it is"
+}
+
+# The scaffold writes exactly one declaration line and composition strips that
+# one. A task whose text quotes a declaration - a follow-up task about this very
+# format - must still reach the worker with that quote intact.
+test_quoted_declaration_in_task_text_survives_composition() {
+  local home id brief composed quoted count
+  home="$TMP_ROOT/quoted-decl-home"
+  id="brief-quoted-decl"
+  mkdir -p "$home/data" "$home/state"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only >/dev/null 2>&1 \
+    || fail "could not scaffold the brief for the quoted-declaration case"
+  brief="$home/data/$id/brief.md"
+  quoted='<!-- worker-rules: v1 kind=ship mode=direct-PR herdr-lab=off repo=other -->'
+  printf '%s\n' "$quoted" >> "$brief"
+  composed=$(launch_prompt "$home" "$id")
+  assert_grep "kind=ship mode=direct-PR herdr-lab=off repo=other" "$composed" \
+    "composition stripped a declaration line quoted inside the task text"
+  count=$(grep -c '^<!-- worker-rules: ' "$composed" || true)
+  [ "$count" = 1 ] || fail \
+    "the launch prompt should carry only the quoted declaration line, found $count"
+  pass "fm-brief.sh: composition strips only the scaffold's own declaration line"
+}
+
+# Placeholder fills go through bash pattern substitution, where an unquoted &
+# in the replacement expands to the matched text under bash 5.2's default
+# patsub_replacement. A home path, project path, or repo name carrying an & must
+# still render: the literal & reaches the worker and no {{TOKEN}} survives.
+test_ampersand_in_paths_and_repo_name_renders() {
+  local home id composed
+  home="$TMP_ROOT/amp&home"
+  id="brief-amp-r7"
+  mkdir -p "$home/data" "$home/state"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" 'R&D' --mode no-mistakes >/dev/null 2>&1 \
+    || fail "an & in the home path or repo name refused the scaffold"
+  composed=$(launch_prompt "$home" "$id")
+  assert_grep "R&D" "$composed" "the repo name lost its literal & in the launch prompt"
+  assert_grep "$home/state/$id.status" "$composed" \
+    "the status file path lost its literal & in the launch prompt"
+  assert_no_grep '{{' "$composed" \
+    "an & in a substituted value left an unfilled {{TOKEN}} in the launch prompt"
+  pass "fm-brief.sh: an & in a path or repo name renders literally, not as the matched token"
+}
+
+# The repo name round-trips to launch inside the one-line declaration, so it
+# must stay a single unambiguous token there. Whitespace would split the field
+# and "-->" would close the comment early, so both are refused at the scaffold.
+test_repo_name_must_be_a_single_declaration_token() {
+  local home out status label repo
+  home="$TMP_ROOT/repo-token-home"
+  mkdir -p "$home/data"
+  label=0
+  for repo in 'two words' 'closes--> early'; do
+    label=$((label + 1))
+    out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "brief-repo-token-$label" "$repo" --mode no-mistakes 2>&1)
+    status=$?
+    [ "$status" -ne 0 ] || fail "a repo name '$repo' scaffolded a brief anyway"
+    assert_contains "$out" "single token with no whitespace" \
+      "the refusal for '$repo' did not say what a repo name must be"
+    assert_absent "$home/data/brief-repo-token-$label/brief.md" \
+      "a refused scaffold still wrote a brief for repo name '$repo'"
+  done
+  pass "fm-brief.sh: a repo name that would break the declaration line is refused"
+}
+
 test_script_parses
 test_no_heredoc_in_command_substitution
+test_standing_rules_are_not_copied_into_the_brief
+test_launch_prompt_carries_only_its_own_delivery_mode
+test_broken_rules_file_refuses_the_scaffold
+test_brief_without_a_declaration_is_left_alone
+test_quoted_declaration_in_task_text_survives_composition
+test_ampersand_in_paths_and_repo_name_renders
+test_repo_name_must_be_a_single_declaration_token
 test_help_includes_entire_header
 test_ship_modes_generate_clean_briefs
 test_ship_briefs_carry_the_doctrine_quality_bar

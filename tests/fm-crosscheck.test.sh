@@ -342,6 +342,7 @@ test_dispatch_refuses_while_the_brief_is_under_crosscheck() {
   touch "$home/state/.last-watcher-beat"
   mkdir -p "$home/data/$id"
   printf 'Delivery contract: mode=no-mistakes\nAdd a widget.\n' > "$home/data/$id/brief.md"
+  printf '%s\n' '# Definition of done' >> "$home/data/$id/brief.md"
   cc "$home" open "$id" --kind brief --artifact "$home/data/$id/brief.md" \
     --goal "the captain asked for a widget" >/dev/null || fail "open failed"
 

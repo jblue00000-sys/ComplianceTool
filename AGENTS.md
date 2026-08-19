@@ -38,7 +38,7 @@ Hard rules, in priority order:
    If work failed, say so plainly with the evidence.
 
 You may maintain this repo's private operational state directly.
-Shared tracked material is `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `.tasks.toml`, `.github/workflows/`, `bin/`, `.agents/skills/`, `doctrine/`, and public `skills/`.
+Shared tracked material is `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `.tasks.toml`, `worker-rules.md`, `.github/workflows/`, `bin/`, `.agents/skills/`, `doctrine/`, and public `skills/`.
 When any crewmate is live, delegate changes to shared tracked material rather than competing with supervision; when the fleet is empty, firstmate may change it directly.
 This repo is a shared template, while `.env`, `data/`, `state/`, `config/`, `projects/`, and `.no-mistakes/` are captain-private and gitignored.
 Ship shared tracked changes through this repo's no-mistakes pipeline and PR path, with the same merge authority as any other project.
@@ -62,6 +62,7 @@ README.md            public overview and development notes
 .agents/skills/      firstmate-loaded internal skills, committed; each carries metadata.internal=true for installers
 .claude/skills       symlink to .agents/skills for claude compatibility
 doctrine/            captain knowledge true for every application, committed so it travels with a clone and loads at session start with no copying step; captain-principles.md and operational-learnings.md (docs/configuration.md owns the tracked-versus-local contract and the deliberately manual propagation model)
+worker-rules.md      the standing crewmate rules, committed and held once here instead of copied into every brief; bin/fm-spawn.sh renders this task's variant and joins it to the brief at launch (bin/fm-worker-rules-lib.sh)
 skills/              standalone public installer-facing skills, committed; not loaded by firstmate
 bin/                 helper scripts, committed; read each script's header before first use
 .env                 optional Relay pairing token; LOCAL, gitignored; presence-gates section 14
@@ -94,6 +95,7 @@ state/               volatile runtime signals; gitignored
   <id>.grok-turnend-token   firstmate-owned grok hook registry token for the task; removed by teardown
   <id>.kimi-turnend-token   firstmate-owned Kimi hook registry token for the task; removed by teardown
   <id>.muse-session  muse busy-source binding (sessions root plus task worktree) written by fm-spawn; removed by teardown
+  <id>.launch-prompt.md  written by fm-spawn: this task's brief joined to its rendered standing worker rules, the exact prompt the worker was launched with; removed by teardown
   <id>.meta          written by fm-spawn: window=, endpoint_task_id=, worktree=, project=, harness=, model=, effort=, kind=, mode=, yolo=, tasktmp=; an optional traceparent= only when trace context is enabled (docs/configuration.md "Trace context propagation"); kind=secondmate also records home= and projects=, plus remote_host=/remote_root=/remote_backend=/remote_herdr_session=/remote_target= for a remote route; a non-default runtime backend records further backend-specific fields (docs/configuration.md "Runtime backend"; bin/fm-backend.sh, section 8); fm-pr-check, including through fm-pr-merge, records one canonical pr= and the forge's pr_head= when available (GitHub pull requests and GitLab merge requests; docs/gitlab-merge-watch.md); fm-x-link appends x_request=, x_request_ts=, x_followups=, and optional x_platform=/x_reply_max_chars= for a Relay-originated task (section 14)
   <id>.herdr-presentation  quarantinable attempt and restart-binding journal for Herdr's optional visual projection; never task or endpoint authority; see docs/herdr-backend.md "Presentation spaces"
   <id>.check.sh      authenticated slow poll; the watcher dispatches validated PR data and the byte-identified Relay shim through trusted repository scripts, runs registered custom checks from hash-validated private snapshots, and rejects every other state check without execution
@@ -407,7 +409,7 @@ A forced repair must use the home-scoped owner path emitted by supervision instr
 
 Guard warnings do not replace the contract.
 Queued wakes must be drained before other action, stale liveness must be repaired through the emitted protocol, and the worktree-tangle warning must be resolved without touching unlanded work.
-The spawn assertion and generated ship brief must both enforce that project work starts in an isolated disposable worktree, never the primary checkout.
+The spawn assertion and every ship task's rendered standing rules must both enforce that project work starts in an isolated disposable worktree, never the primary checkout.
 Harness-aware turn-end guards are structural backstops, not permission to omit the live cycle.
 
 ### Away-mode stub
@@ -493,12 +495,15 @@ Preserve durable structured identifiers, dependencies, and completion artifact l
 
 ## 11. Crewmate briefs
 
-`bin/fm-brief.sh` and its help own scaffold syntax, generated variants, status protocol, delivery-mode definitions of done, and exact safety mechanics.
+`bin/fm-brief.sh` and its help own scaffold syntax, which variants exist, and the `--mode`, `--scout`, `--secondmate`, and `--herdr-lab` semantics that select one.
 Use its scaffold as the contract, then replace every `{TASK}` placeholder with a clear task description, acceptance criteria each written so a reviewer can answer it yes or no, constraints, and necessary context before dispatch or seeding.
-Every ship brief carries the standing quality bar copied from tracked `doctrine/captain-principles.md` and requires it to reach the reviewing agent; change that bar at its owner, never in a brief.
-Keep additions task-specific rather than repeating lifecycle instructions, and alter generated sections only when the task genuinely differs from the standard shape.
+Tracked `worker-rules.md` owns the standing rules a brief no longer copies, including the status protocol, each delivery mode's definition of done, and the exact safety mechanics; the scaffold records which variant applies and the spawn joins that variant to the brief, so change a standing rule there and never in a brief.
+Every ship task's rules carry the standing quality bar copied from tracked `doctrine/captain-principles.md` and require it to reach the reviewing agent; change that bar at its owner, never in a brief or in `worker-rules.md`.
+Keep additions task-specific rather than repeating lifecycle instructions.
+The standing sections are rendered from tracked `worker-rules.md` at launch and are not editable per task, so a task that genuinely differs from the standard shape must name that deviation explicitly in its `# Task` text.
+Naming it is what makes it stick, because the standing section it contradicts still reaches the worker - a direct-PR task working an existing external PR still receives the standing definition of done telling it to push a branch and open a PR.
 
-Every ship brief must retain the worktree-isolation assertion and stop if launched in the primary checkout.
+Every ship task's rendered standing rules carry the worktree-isolation assertion and stop the worker if it was launched in the primary checkout; that assertion lives in tracked `worker-rules.md` and reaches the worker in the composed launch prompt, so never hand-add it to a brief.
 If a ship task touches firstmate's shared tracked material, explicitly require `firstmate-coding-guidelines` before editing.
 If a task will drive Herdr lifecycle behavior, scaffold with `--herdr-lab`; if that need appears after an unguarded scaffold, stop and regenerate rather than adding commands by hand.
 The generated Herdr contract must use a named non-`default` isolated lab and its guarded helper for every lifecycle action.

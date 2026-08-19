@@ -17,6 +17,8 @@ set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=bin/fm-worker-rules-lib.sh
+. "$ROOT/bin/fm-worker-rules-lib.sh"
 
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-tangle-lib.sh"
@@ -121,15 +123,22 @@ test_bootstrap_line() {
 
 # --- GUARD 1a: brief isolation assertion ------------------------------------
 
-# The generated ship brief must carry the isolation assertion AHEAD of the
-# `git checkout -b` step, so the crewmate verifies its worktree before branching.
+# The prompt a ship worker is launched with must carry the isolation assertion
+# AHEAD of the `git checkout -b` step, so the crewmate verifies its worktree
+# before branching. That text lives in tracked worker-rules.md and reaches the
+# worker when bin/fm-spawn.sh composes it onto the brief, so it is asserted on
+# that composed prompt through the same library the spawn path uses.
 test_brief_assertion_precedes_branch() {
-  local home brief iso br
+  local home brief iso br composed
   home="$TMP_ROOT/brief-home"
   mkdir -p "$home/data"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" tangle-brief-cc3 alpha --mode no-mistakes >/dev/null 2>&1
-  brief="$home/data/tangle-brief-cc3/brief.md"
-  assert_present "$brief" "brief was not scaffolded"
+  assert_present "$home/data/tangle-brief-cc3/brief.md" "brief was not scaffolded"
+  brief="$home/data/tangle-brief-cc3/launch-prompt.md"
+  fm_worker_rules_compose "$home/data/tangle-brief-cc3/brief.md" tangle-brief-cc3 \
+    "$home/state" "$home/data" "$ROOT" composed \
+    || fail "could not compose the launch prompt the worker is given"
+  printf '%s\n' "$composed" > "$brief"
   assert_grep "blocked: launched in primary checkout, not an isolated worktree" "$brief" \
     "brief is missing the isolation blocked-status contract"
   assert_grep "The path check is authoritative" "$brief" \
@@ -177,6 +186,7 @@ run_spawn() {
   local home=$1 id=$2 proj=$3 pane=$4 fakebin=$5
   mkdir -p "$home/data/$id"
   printf 'brief\n' > "$home/data/$id/brief.md"
+  printf '%s\n' '# Definition of done' >> "$home/data/$id/brief.md"
   FM_ROOT_OVERRIDE='' FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
@@ -256,6 +266,7 @@ run_spawn_record() {
   local home=$1 id=$2 proj=$3 pane=$4 fakebin=$5 rec=$6
   mkdir -p "$home/data/$id"
   printf 'brief\n' > "$home/data/$id/brief.md"
+  printf '%s\n' '# Definition of done' >> "$home/data/$id/brief.md"
   FM_ROOT_OVERRIDE='' FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \

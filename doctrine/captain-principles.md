@@ -59,8 +59,8 @@ The captain's standard, in his words: "Simplicity and speed. End user's experien
 The lesson that set it: a feature shipped technically working, passed its pipeline, and was rejected on sight because a real person could not reasonably complete it.
 "The pipeline passed" never substitutes for "a real person could do this."
 
-`bin/fm-brief.sh` copies the fenced block below into every ship brief verbatim, and that brief requires it to travel in the validation pipeline's `--intent`, which the reviewing agent treats as authoritative acceptance criteria.
-Edit the block here and every future brief and review inherits the change; never restate it in a brief by hand.
+`bin/fm-worker-rules-lib.sh` copies the fenced block below verbatim into every ship task's standing rules, which reach the worker in its launch prompt and require the bar to travel in the validation pipeline's `--intent`, which the reviewing agent treats as authoritative acceptance criteria.
+Edit the block here and every future task and review inherits the change; never restate it in a brief by hand.
 Record the same bar in each application's own committed `AGENTS.md` so its contributors inherit it too.
 
 <!-- quality-bar:start -->

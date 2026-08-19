@@ -91,6 +91,7 @@ mkdir -p "$STATE" "$DATA/$ID" "$CONFIG"
 # presentation projection and keep the assertions on the flat per-home workspace.
 printf 'off\n' > "$CONFIG/herdr-presentation-spaces"
 printf 'trivial autodetect-smoke brief: nothing to do.\n' > "$DATA/$ID/brief.md"
+printf '%s\n' '# Definition of done' >> "$DATA/$ID/brief.md"
 
 PROJ="$TMP_ROOT/scratch-project"
 mkdir -p "$PROJ"

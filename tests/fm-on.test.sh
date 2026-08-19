@@ -11,7 +11,54 @@ TMP_ROOT=$(fm_test_tmproot fm-on)
 # and physicalize macOS's /var -> /private/var alias before transport validation.
 mkdir -p "$TMP_ROOT"
 TMP_ROOT=$(cd "$TMP_ROOT" && pwd -P)
-trap 'if [ -f "$TMP_ROOT/remote-jobs/worker.pid" ]; then kill "$(cat "$TMP_ROOT/remote-jobs/worker.pid")" 2>/dev/null || true; fi; rm -rf -- "$TMP_ROOT"' EXIT
+# The Linux worker path this test pins runs a restart supervisor above the
+# serving child recorded in worker.pid, and the child keeps writing and removing
+# its own state files while it shuts down. Signalling that whole process group
+# and waiting for it to be gone before removing the fixture is what keeps
+# teardown deterministic: a lone kill of the child left rm -rf racing a live
+# worker, which failed the run with "Directory not empty".
+cleanup() {
+  local pid='' pgid='' own_pgid='' stray='' waited=0
+  if [ -f "$TMP_ROOT/remote-jobs/worker.pid" ]; then
+    pid=$(cat "$TMP_ROOT/remote-jobs/worker.pid" 2>/dev/null || true)
+  fi
+  case "$pid" in ''|*[!0-9]*) pid='' ;; esac
+  if [ -n "$pid" ]; then
+    pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
+    own_pgid=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')
+    case "$pgid" in ''|*[!0-9]*) pgid='' ;; esac
+    if [ -n "$pgid" ] && [ "$pgid" != "$own_pgid" ]; then
+      kill -TERM -"$pgid" 2>/dev/null || true
+    fi
+    kill -TERM "$pid" 2>/dev/null || true
+    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt 200 ]; do
+      waited=$((waited + 1))
+      sleep 0.05
+    done
+    if [ -n "$pgid" ] && [ "$pgid" != "$own_pgid" ]; then
+      waited=0
+      while pgrep -g "$pgid" >/dev/null 2>&1 && [ "$waited" -lt 200 ]; do
+        waited=$((waited + 1))
+        sleep 0.05
+      done
+    fi
+  fi
+  # A worker whose pid file was never published, or was already removed while it
+  # shut down, still holds this fixture open. Its state root is this unique
+  # temporary path, so stopping by that path leaves nothing writing under it.
+  waited=0
+  while :; do
+    stray=$(pgrep -f "$TMP_ROOT" 2>/dev/null | grep -v "^$$\$" | tr '\n' ' ')
+    [ -n "${stray// /}" ] || break
+    [ "$waited" -lt 200 ] || break
+    # shellcheck disable=SC2086 # Deliberate word splitting of a pid list.
+    kill -TERM $stray 2>/dev/null || true
+    waited=$((waited + 1))
+    sleep 0.05
+  done
+  rm -rf -- "$TMP_ROOT"
+}
+trap cleanup EXIT
 LOCAL_HOME="$TMP_ROOT/local-home"
 REMOTE_ROOT="$TMP_ROOT/remote-root"
 REMOTE_HOME="$TMP_ROOT/remote-home"

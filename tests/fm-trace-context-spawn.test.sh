@@ -99,6 +99,7 @@ make_spawn_case() {
   id=$name-z1
   mkdir -p "$home/data/$id"
   printf 'brief for %s\n' "$id" > "$home/data/$id/brief.md"
+  printf '%s\n' '# Definition of done' >> "$home/data/$id/brief.md"
   printf '%s\n' "$home|$proj|$wt|$fakebin|$launchlog|$id"
 }
 
@@ -192,6 +193,7 @@ run_two_level() {
   sm_id="sm-$name"
   mkdir -p "$prim/data/$sm_id"
   printf 'charter brief\n' > "$prim/data/$sm_id/brief.md"
+  printf '%s\n' '# Definition of done' >> "$prim/data/$sm_id/brief.md"
   smlog="$base/sm-launch.log"
   smfake=$(make_spawn_fakebin "$base/sm-fake")
   : > "$smlog"
@@ -216,6 +218,7 @@ run_two_level() {
   fm_git_worktree "$wproj" "$wwt" "wt-$name"
   mkdir -p "$sm/state" "$sm/projects" "$sm/data/$worker_id"
   printf 'worker brief\n' > "$sm/data/$worker_id/brief.md"
+  printf '%s\n' '# Definition of done' >> "$sm/data/$worker_id/brief.md"
   touch "$sm/state/.last-watcher-beat"
   start_trace_session "$sm" "$TL_ENV_TC"
   wlog="$base/worker-launch.log"
@@ -353,6 +356,7 @@ test_duplicate_secondmate_spawn_does_not_converge_trace_context() {
   mkdir -p "$prim/config" "$prim/data/$id" "$prim/state" "$prim/projects"
   : > "$prim/config/trace-context"
   printf 'charter brief\n' > "$prim/data/$id/brief.md"
+  printf '%s\n' '# Definition of done' >> "$prim/data/$id/brief.md"
   touch "$prim/state/.last-watcher-beat"
   start_trace_session "$prim"
   mkdir -p "$sm/bin" "$sm/data"
@@ -499,7 +503,9 @@ test_two_routed_tasks_through_one_secondmate_root_distinct_traces() {
   fm_git_worktree "$proj_b" "$wt_b" wt-routed-b
   mkdir -p "$sm/data/$id_a" "$sm/data/$id_b"
   printf 'brief a\n' > "$sm/data/$id_a/brief.md"
+  printf '%s\n' '# Definition of done' >> "$sm/data/$id_a/brief.md"
   printf 'brief b\n' > "$sm/data/$id_b/brief.md"
+  printf '%s\n' '# Definition of done' >> "$sm/data/$id_b/brief.md"
   log_a="$base/launch-a.log"
   log_b="$base/launch-b.log"
 

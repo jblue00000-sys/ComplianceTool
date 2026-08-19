@@ -146,7 +146,7 @@ Only a named non-default branch checked out in `FM_ROOT` is a worktree tangle.
 `fm-tangle-lib.sh` resolves the default branch from `origin/HEAD`, then local `main` or `master`, and classifies that named non-default primary branch as the tangle.
 `fm-guard.sh` prints the repair command on the next mutable fleet action, while `bin/fm-session-start.sh` reports the same condition through bootstrap as a `TANGLE:` line at session start.
 If another live session holds the fleet lock, both surfaces keep the alarm but switch to read-only wording with no repair command.
-Ship briefs also tell the crewmate to verify `pwd -P` and `git rev-parse --show-toplevel` before creating `fm/<id>`, then stop with a blocked status if it landed in the primary checkout.
+Every ship task's rendered standing rules also tell the crewmate to verify `pwd -P` and `git rev-parse --show-toplevel` before creating `fm/<id>`, then stop with a blocked status if it landed in the primary checkout.
 
 ## No-mistakes gate authority boundary
 
@@ -218,7 +218,20 @@ The `data/secondmates.md` line contract is owned by the [`secondmate-provisionin
 
 `no-mistakes` tasks run the full validation pipeline, `direct-PR` tasks open PRs without that pipeline, and `local-only` tasks stay local until firstmate performs an approved fast-forward merge.
 Each task's mode and `yolo` posture are firstmate's decision at intake and are passed explicitly to `bin/fm-brief.sh`, `bin/fm-spawn.sh`, and `bin/fm-promote.sh`, which refuse a ship task that does not carry them.
-A ship brief records its mode as a fixed machine-readable line and the spawn refuses to launch on a different one, so the worker's instructions and the recorded task delivery cannot diverge.
+A ship brief records its mode in the one-line worker-rules declaration described below and the spawn refuses to launch on a different mode, so the worker's instructions and the recorded task delivery cannot diverge.
+
+## The standing worker rules live in one tracked file
+
+Tracked [`worker-rules.md`](../worker-rules.md) holds the standing crewmate rules - the worktree-isolation assertion, the status protocol, the numbered rules, the project-memory contract, and each delivery mode's definition of done - as fenced blocks with `{{TOKEN}}` placeholders.
+`bin/fm-brief.sh` no longer copies any of that into a brief: it scaffolds the task-specific half plus one machine-readable `<!-- worker-rules: ... -->` declaration naming the variant, and renders that variant once to validate it, so a damaged rules file or a broken doctrine quality-bar fence refuses the scaffold rather than surfacing at launch.
+`bin/fm-spawn.sh` renders the same variant, joins the brief's task text to it, and writes `state/<id>.launch-prompt.md`, which is what the launch command reads.
+The rules therefore arrive inside the worker's launch prompt exactly as when every brief carried its own copy: there is no pointer for a worker to decline to follow, and the composed prompt is byte-identical to the brief the previous scaffold would have written.
+`bin/fm-worker-rules-lib.sh` is the single owner of variant selection, the required block names, and the placeholder fills; a missing block, an unterminated fence, or an unfilled placeholder refuses the spawn before any endpoint exists.
+Because those sections are rendered at launch rather than written into the brief, they are not editable per task, and a deviating task names its deviation in its own `# Task` text; AGENTS.md section 11 owns that instruction.
+A brief scaffolded before this contract carries no declaration, already contains its whole rule set, and is launched directly from its own file.
+That passthrough requires the brief to still carry a rule set: a declaration-less brief with neither an anchored `# Rules` heading nor an anchored `# Definition of done` heading is damaged rather than pre-contract, and the spawn refuses it by name rather than launching a worker with no standing rules at all.
+A persistent secondmate charter is exempt from that check, because it is a whole document on the unchanged whole-text path rather than a scaffold whose rules are rendered at launch.
+Either way the launch prompt is refused above `FM_LAUNCH_PROMPT_MAX` bytes (default 131072, the smallest single-argument ceiling across supported platforms) with a message naming the fix, because the prompt reaches the harness as one argument and a launch that dies in the pane leaves a bare shell that still looks busy.
 `data/projects.md` records each project's standing posture and optional `+yolo` flag as the captain's default and as context for that decision, including the conditional `no-mistakes-prod-only` policy; a ship spawn that drops below the registered rigor prints a deviation notice and continues.
 `bin/fm-project-mode.sh` remains the one registry parser for the mechanical consumers that have no task in hand: fleet sync's `local-only` skip and home seeding's refusal and no-mistakes initialization.
 When a selected delivery path calls for a diff, `bin/fm-review-diff.sh` refreshes the authoritative base and, when task meta records `pr=`, always fetches and compares against `refs/pull/<n>/head` by default (recorded `pr_head=` is only an offline fallback) before falling back to the local branch with a warning.
@@ -272,7 +285,7 @@ The [Relay configuration reference](configuration.md#promised-public-replies-sta
 ## Project memory belongs to projects
 
 Durable project-intrinsic agent knowledge lives in each project's committed `AGENTS.md`, with `CLAUDE.md` as a symlink.
-Ship briefs prompt crewmates to create or update those files through the normal delivery path; `data/projects.md` stays a thin private registry.
+A ship task's rendered standing rules prompt crewmates to create or update those files through the normal delivery path; `data/projects.md` stays a thin private registry.
 Each project `AGENTS.md` carries a short `## Maintaining this file` self-governance section; `bin/fm-ensure-agents-md.sh` owns the canonical wording and injects it idempotently when creating the skeleton, promoting an existing `CLAUDE.md`, or reconciling an existing `AGENTS.md` that still lacks it.
 It refuses a case-variant real memory file such as a lowercase `agents.md`, whose `CLAUDE.md` symlink would carry an uppercase literal target that dangles on a case-sensitive filesystem, and surfaces the mismatch for manual reconciliation.
 The full ownership rule - what is project-intrinsic versus fleet-private, and how firstmate keeps the two apart without writing into project clones - is owned by [`AGENTS.md`](../AGENTS.md) (project and knowledge management).

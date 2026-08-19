@@ -369,6 +369,10 @@
       "audience": "maintainer-verification"
     },
     {
+      "path": "docs/verification/worker-rules.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": "docs/watcher-continuity.md",
       "audience": "operator-current"
     },
@@ -391,6 +395,10 @@
     {
       "path": "skills/stow/SKILL.md",
       "audience": "public-product"
+    },
+    {
+      "path": "worker-rules.md",
+      "audience": "agent-runtime"
     }
   ]
 }

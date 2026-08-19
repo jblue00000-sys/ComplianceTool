@@ -8,11 +8,12 @@
 #   spawn and refused on --scout and --secondmate spawns. Firstmate resolves both
 #   per task at intake (AGENTS.md section 7); data/projects.md holds the captain's
 #   standing posture as context, not as this task's answer, so a spawn never looks
-#   the mode up. A ship spawn additionally reads the brief's recorded
-#   "Delivery contract: mode=<mode>" line and REFUSES a mismatch, so the worker's
-#   instructions and the recorded task delivery cannot drift apart; a brief
-#   scaffolded before that line existed warns once and launches on the flag. When
-#   the explicit mode carries less rigor than the project's standing posture, a
+#   the mode up. A ship spawn additionally reads the mode the brief recorded (in
+#   its worker-rules declaration, or in an older brief's inline
+#   "Delivery contract: mode=<mode>" line) and REFUSES a mismatch, so the worker's
+#   instructions and the recorded task delivery cannot drift apart; a brief that
+#   records no mode warns once and launches on the flag.
+#   When the explicit mode carries less rigor than the project's standing posture, a
 #   loud one-line deviation notice is printed and the spawn continues.
 #   no-mistakes-prod-only is a registry policy rather than a task mode and is
 #   refused as a flag value.
@@ -127,7 +128,7 @@
 #   multi-task shell loop (the tool shell is zsh, which does not word-split unquoted
 #   $vars and silently breaks ad-hoc `for ... in $pairs` loops).
 #   Launch templates live in launch_template() below; placeholders replaced before launch:
-#     __BRIEF__    absolute path to data/<task-id>/brief.md
+#     __BRIEF__    absolute path to the composed launch prompt (see below)
 #     __TURNEND__  absolute path to state/<task-id>.turn-ended (for harnesses whose
 #                  turn-end signal rides the launch command, e.g. codex -c notify=[...])
 #     __PIEXT__    absolute path to state/<task-id>.pi-ext.ts (pi turn-end extension,
@@ -135,6 +136,17 @@
 #     __PITURNEND__ absolute path to .pi/extensions/fm-primary-turnend-guard.ts in a pi secondmate home
 #     __PIWATCH__   absolute path to .pi/extensions/fm-primary-pi-watch.ts in a pi secondmate home
 #     __OPINPUT__   absolute path to the canonical operational-input encoder
+#   A brief scaffolded by the current bin/fm-brief.sh holds only its task-specific
+#   text plus a one-line worker-rules declaration naming its variant; tracked
+#   worker-rules.md holds the standing rules once. This script renders that
+#   variant (bin/fm-worker-rules-lib.sh) and writes the task text plus those rules
+#   to state/<task-id>.launch-prompt.md, which is what __BRIEF__ points at, so the
+#   worker receives the rules in its launch prompt rather than through a pointer
+#   it could decline to follow. A brief with no declaration already carries its
+#   whole rule set and is launched directly, unchanged, unless it carries no
+#   rule sections either, which is damaged rather than pre-contract and is
+#   refused by name (docs/architecture.md owns that condition). Either way the
+#   launch prompt is refused above FM_LAUNCH_PROMPT_MAX bytes, naming the fix.
 # Verified per-harness turn-end hooks are installed automatically where enabled; some live outside the worktree.
 # Kimi uses one surgically installed Firstmate region in $HOME/.kimi-code/config.toml,
 # a firstmate-owned global hook and registry, and a gitignored per-task pointer.
@@ -221,6 +233,8 @@ SUB_HOME_MARKER=".fm-secondmate-home"
 . "$SCRIPT_DIR/fm-trace-context-lib.sh"
 # shellcheck source=bin/fm-remote-readiness-lib.sh
 . "$SCRIPT_DIR/fm-remote-readiness-lib.sh"
+# shellcheck source=bin/fm-worker-rules-lib.sh
+. "$SCRIPT_DIR/fm-worker-rules-lib.sh"
 # Fail closed before any fleet mutation: a no-mistakes gate agent must never spawn
 # a direct report (see bin/fm-gate-refuse-lib.sh).
 fm_refuse_if_gate_agent
@@ -1344,6 +1358,20 @@ else
 fi
 [ -f "$BRIEF" ] || { echo "error: no brief at $BRIEF" >&2; exit 1; }
 
+# Standing worker rules by reference. A brief scaffolded by the current
+# bin/fm-brief.sh carries only its task-specific half plus a one-line
+# declaration naming its variant; the standing rules live once in tracked
+# worker-rules.md. Read the declaration's mode here for the delivery cross-check
+# below, which a brief scaffolded before this contract still answers from its own
+# inline "Delivery contract:" line. A promoted scout keeps the kind its brief was
+# scaffolded with, so the declaration is deliberately not cross-checked against
+# this spawn's kind.
+WORKER_RULES_DECL=
+WORKER_RULES_MODE=
+if fm_worker_rules_declaration "$BRIEF" WORKER_RULES_DECL; then
+  fm_worker_rules_field "$WORKER_RULES_DECL" mode WORKER_RULES_MODE || WORKER_RULES_MODE=
+fi
+
 # Cross-check gate. When this task's instructions were put through the
 # author/challenger cross-check (.agents/skills/crosscheck-rounds/SKILL.md),
 # dispatch is the boundary that cross-check exists to sit in front of, so an
@@ -1365,12 +1393,19 @@ delivery_rigor_rank() {  # <mode> -> 3 (most rigor) .. 1 (least); 0 = not a task
 }
 
 # Brief/spawn delivery agreement, checked before any endpoint exists.
-# fm-brief.sh records a ship brief's mode as a fixed "Delivery contract: mode=<mode>"
-# line. A spawn that disagrees would launch a worker whose instructions and whose
-# recorded task delivery differ, which is the exact drift this contract prevents.
+# fm-brief.sh records a ship brief's mode in its worker-rules declaration, and
+# the rendered definition of done still opens with the fixed
+# "Delivery contract: mode=<mode>" line that briefs scaffolded before that
+# contract carry inline. A spawn that disagrees would launch a worker whose
+# instructions and whose recorded task delivery differ, which is the exact drift
+# this contract prevents.
 if [ "$KIND" = ship ]; then
   PROJ_NAME=$(basename "$PROJ_ABS")
-  BRIEF_MODE=$(sed -n 's/^Delivery contract: mode=\([^ ]*\).*$/\1/p' "$BRIEF" | head -n 1)
+  if [ -n "$WORKER_RULES_DECL" ]; then
+    BRIEF_MODE=$WORKER_RULES_MODE
+  else
+    BRIEF_MODE=$(sed -n 's/^Delivery contract: mode=\([^ ]*\).*$/\1/p' "$BRIEF" | head -n 1)
+  fi
   if [ -z "$BRIEF_MODE" ]; then
     echo "warning: $BRIEF records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode $MODE - confirm its definition of done matches" >&2
   elif [ "$BRIEF_MODE" != "$MODE" ]; then
@@ -1389,8 +1424,61 @@ if [ "$KIND" = ship ]; then
   fi
 fi
 
-BRIEF_DIR_REAL=$(cd "$(dirname "$BRIEF")" && pwd -P)
-BRIEF_REAL="$BRIEF_DIR_REAL/$(basename "$BRIEF")"
+# Compose the launch prompt: the brief's task-specific text followed by this
+# variant's standing rules, rendered from tracked worker-rules.md. Composing on
+# firstmate's side, before any endpoint exists, is what makes the rules
+# structural: the worker receives them inside its launch prompt exactly as when
+# every brief carried its own copy, and a rules file that is missing, fenced
+# wrong, or short a block refuses the spawn here instead of silently launching a
+# worker that never saw the isolation assertion.
+# A brief carrying no declaration is either one scaffolded before this contract,
+# which already holds its whole rule set inline, or a current brief whose one
+# declaration line was dropped. Only the second would launch a worker with no
+# isolation assertion, no "never push to the default branch", and no status
+# protocol, so tell them apart by the standing sections a pre-contract brief
+# always carries. Both must be absent to refuse, and a persistent secondmate is
+# out of scope entirely: its charter is a whole document on the unchanged
+# whole-text path, never a scaffold with standing rules rendered at launch.
+LAUNCH_PROMPT="$BRIEF"
+WORKER_RULES_PROMPT=
+if [ "$KIND" != secondmate ] && [ -z "$WORKER_RULES_DECL" ] \
+   && ! grep -qx '# Rules' "$BRIEF" && ! grep -qx '# Definition of done' "$BRIEF"; then
+  echo "error: $BRIEF carries no <!-- worker-rules: ... --> declaration and no standing rule sections of its own, so launching it would hand the worker no worktree-isolation assertion, no \"never push to the default branch\", and no status protocol; re-scaffold the brief with bin/fm-brief.sh, or restore its <!-- worker-rules: ... --> declaration line, then spawn again" >&2
+  exit 1
+fi
+if [ -n "$WORKER_RULES_DECL" ]; then
+  fm_worker_rules_compose "$BRIEF" "$ID" "$STATE" "$DATA" "$FM_ROOT" WORKER_RULES_PROMPT || exit 1
+fi
+
+# Launch-prompt ceiling. The prompt reaches the harness as ONE argv element that
+# the pane shell builds by reading this file, so the binding limit is the
+# kernel's argument cap, not anything firstmate can stretch. Measured
+# 2026-08-16: on macOS 24.2.0 (kern.argmax 1048576) the launch accepted a
+# 1,046,265-byte prompt and refused 1,046,554 with "argument list too long";
+# Linux caps a single argument at MAX_ARG_STRLEN (131072) regardless of ARG_MAX,
+# so that is the smallest ceiling across supported platforms and the one
+# enforced here. A composed prompt is normally well under 15 KB, so this refuses
+# only a runaway brief, and it names the fix rather than letting the launch die
+# in the pane and leave a bare shell that still looks busy.
+# Measured on the composed text in memory, so a refused spawn leaves no
+# state/<id>.launch-prompt.md behind for a task that never started.
+FM_LAUNCH_PROMPT_MAX=${FM_LAUNCH_PROMPT_MAX:-131072}
+if [ -n "$WORKER_RULES_DECL" ]; then
+  LAUNCH_PROMPT_BYTES=$(printf '%s\n' "$WORKER_RULES_PROMPT" | wc -c | tr -d ' ')
+else
+  LAUNCH_PROMPT_BYTES=$(wc -c < "$LAUNCH_PROMPT" | tr -d ' ')
+fi
+if [ "$LAUNCH_PROMPT_BYTES" -gt "$FM_LAUNCH_PROMPT_MAX" ]; then
+  echo "error: $ID would launch with a $LAUNCH_PROMPT_BYTES-byte prompt, over the $FM_LAUNCH_PROMPT_MAX-byte limit a harness argument can carry; shorten the # Task section of $BRIEF - move reference material, logs, or long file listings into a file in the worktree and point the worker at it - then spawn again" >&2
+  exit 1
+fi
+
+if [ -n "$WORKER_RULES_DECL" ]; then
+  LAUNCH_PROMPT="$STATE/$ID.launch-prompt.md"
+fi
+
+BRIEF_DIR_REAL=$(cd "$(dirname "$LAUNCH_PROMPT")" && pwd -P)
+BRIEF_REAL="$BRIEF_DIR_REAL/$(basename "$LAUNCH_PROMPT")"
 
 # PROJ_ABS can still carry a symlinked path component (e.g. macOS's /tmp ->
 # /private/tmp) when it came from the ship/scout branch's logical `pwd` above.
@@ -2209,6 +2297,18 @@ else
   fi
 fi
 
+# The composed prompt is installed here, once every guard that could still
+# refuse this spawn has passed, so a refused relaunch neither creates nor
+# rewrites the file. state/<id>.launch-prompt.md therefore stays the exact
+# prompt the running worker was launched with, owned by that task's teardown,
+# for as long as that task lives.
+if [ -n "$WORKER_RULES_DECL" ]; then
+  printf '%s\n' "$WORKER_RULES_PROMPT" > "$LAUNCH_PROMPT" || {
+    echo "error: could not write the composed launch prompt to $LAUNCH_PROMPT" >&2
+    exit 1
+  }
+fi
+
 META_WINDOW=$T
 [ "$BACKEND" = orca ] && META_WINDOW=$W
 {
@@ -2255,7 +2355,7 @@ META_WINDOW=$T
 } > "$STATE/$ID.meta"
 [ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0
 
-sq_brief=$(shell_quote "$BRIEF")
+sq_brief=$(shell_quote "$LAUNCH_PROMPT")
 sq_turnend=$(shell_quote "$TURNEND")
 sq_piext=$(shell_quote "$STATE/$ID.pi-ext.ts")
 sq_piturnend=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-turnend-guard.ts")
