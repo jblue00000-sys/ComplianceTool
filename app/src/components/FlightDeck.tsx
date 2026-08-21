@@ -462,7 +462,7 @@ const SEVERITY_COLOUR: Record<EventSeverity, string> = {
 /* ---------- page ---------- */
 
 export function FlightDeck() {
-  const { openAgent, focusedAgentId, focusAgent } = useShell();
+  const { openAgent, focusedAgentId, focusAgent, showAgentRisks } = useShell();
   const [filterId, setFilterId] = useState("all");
   const [tip, setTip] = useState<Tip | null>(null);
 
@@ -525,13 +525,22 @@ export function FlightDeck() {
               {focused ? `${focused.name} — what it is wired into` : "Where your agents sit"}
             </span>
             {focused ? (
-              <button
-                type="button"
-                onClick={() => focusAgent(null)}
-                className="rounded-lg border border-(--color-line-2) px-2.5 py-1 text-xs text-(--color-mute) hover:border-(--color-accent) hover:text-(--color-ink)"
-              >
-                ← Back to all agents
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => focusAgent(null)}
+                  className="rounded-lg border border-(--color-line-2) px-2.5 py-1 text-xs text-(--color-mute) hover:border-(--color-accent) hover:text-(--color-ink)"
+                >
+                  ← Back to all agents
+                </button>
+                <button
+                  type="button"
+                  onClick={() => showAgentRisks(focused.id)}
+                  className="rounded-lg bg-(--color-accent) px-2.5 py-1 text-xs font-bold text-[#06101d]"
+                >
+                  See its OWASP controls →
+                </button>
+              </>
             ) : null}
             <span className="ml-auto font-mono text-[11.5px] text-(--color-dim)">{hint}</span>
           </div>

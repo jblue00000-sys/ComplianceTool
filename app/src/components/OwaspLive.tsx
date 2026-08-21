@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AGENTS } from "@/lib/data";
+import { AGENTS, agentById } from "@/lib/data";
+import { assessmentsFor } from "@/lib/controls";
 import { ASI_IDS, ASI_RISKS } from "@/lib/owasp";
+import { riskDetail } from "@/lib/mitigations";
 import {
   band,
   coverageSummary,
@@ -14,9 +16,8 @@ import {
   VERDICT_LABEL,
 } from "@/lib/scoring";
 import type { AsiId, Band } from "@/lib/types";
-import { riskDetail } from "@/lib/mitigations";
 import { useShell } from "./AppShell";
-import { BAND_COLOR, Gauge, PageHeading, Panel } from "./ui";
+import { Avatar, BAND_COLOR, Gauge, Meter, PageHeading, Panel } from "./ui";
 
 const BADGE_TONE: Record<Band, string> = {
   green: "bg-[rgba(47,191,135,0.16)] text-[#5fdcaa]",
@@ -192,7 +193,7 @@ function RiskCard({
 }
 
 function Matrix() {
-  const { openAgent } = useShell();
+  const { openAgent, showAgentRisks } = useShell();
   return (
     <Panel className="overflow-x-auto p-3.5">
       <table className="min-w-[760px] border-separate border-spacing-[3px] text-xs">
@@ -219,7 +220,8 @@ function Matrix() {
             <tr key={agent.id}>
               <th
                 scope="row"
-                onClick={() => openAgent(agent.id)}
+                // The name is the agent-scoped affordance; a cell opens the profile.
+                onClick={() => showAgentRisks(agent.id)}
                 className="cursor-pointer pr-2.5 text-left text-[12.6px] font-semibold whitespace-nowrap text-(--color-mute) hover:text-(--color-accent)"
               >
                 {agent.name}
@@ -273,9 +275,131 @@ function Matrix() {
   );
 }
 
+
+/* ------------------------------------------------------- by agent ---- */
+
+/**
+ * One agent against all ten risks. This is the view a remediation owner wants:
+ * not "who is failing control 6" but "what does my agent need".
+ */
+function ByAgent({ agentId }: { agentId: string }) {
+  const { setTab, setRiskAgent } = useShell();
+  const agent = agentById(agentId);
+  const totals = useMemo(() => {
+    if (!agent) return { pass: 0, partial: 0, fail: 0 };
+    let pass = 0, partial = 0, fail = 0;
+    for (const id of ASI_IDS) {
+      const verdict = band(agent.posture[id]);
+      if (verdict === "green") pass += 1;
+      else if (verdict === "amber") partial += 1;
+      else fail += 1;
+    }
+    return { pass, partial, fail };
+  }, [agent]);
+
+  if (!agent) return null;
+  const standing = standingScore(agent);
+
+  return (
+    <Panel className="overflow-hidden p-0">
+      <div className="flex flex-wrap items-center gap-3.5 border-b border-(--color-line) bg-[linear-gradient(160deg,#141d2e,#101724)] p-4">
+        <Avatar name={agent.name} band={standingBand(agent)} />
+        <div className="min-w-0">
+          <div className="text-[17px] font-bold">{agent.name}</div>
+          <div className="text-[12.3px] text-(--color-dim)">
+            {agent.department} · manager {agent.owner}
+          </div>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-5">
+          <span className="font-mono text-[11px] text-(--color-dim)">
+            <b style={{ color: "#5fdcaa" }}>{totals.pass}</b> pass ·{" "}
+            <b style={{ color: "#f5c860" }}>{totals.partial}</b> partial ·{" "}
+            <b style={{ color: "#ff8b93" }}>{totals.fail}</b> fail
+          </span>
+          <span className="text-right">
+            <span
+              className="block text-3xl font-extrabold tracking-tight"
+              style={{ color: BAND_COLOR[standingBand(agent)] }}
+            >
+              {standing}
+            </span>
+            <span className="block font-mono text-[10px] tracking-[0.12em] text-(--color-dim) uppercase">
+              across all ten
+            </span>
+          </span>
+        </div>
+      </div>
+
+      {ASI_RISKS.map((risk) => {
+        const score = agent.posture[risk.id];
+        const verdict = band(score);
+        const detail = riskDetail(risk.id);
+        const cells = detail ? assessmentsFor(agent.id, risk.id) : [];
+        const inPlace = cells.filter((c) => c.status === "in-place").length;
+        const partial = cells.filter((c) => c.status === "partial").length;
+        const missing = cells.filter((c) => c.status === "missing").length;
+        const na = cells.filter((c) => c.status === "not-applicable").length;
+
+        return (
+          <div
+            key={risk.id}
+            className="grid grid-cols-[64px_minmax(0,1fr)_92px] items-center gap-3.5 border-b border-(--color-line) px-4 py-3.5 last:border-b-0 lg:grid-cols-[64px_minmax(0,1fr)_150px_130px_92px]"
+          >
+            <span className="font-mono text-[13px] font-extrabold tracking-wide text-(--color-accent)">
+              {risk.id}
+            </span>
+
+            <span className="min-w-0">
+              <span className="block text-[14.5px] font-bold">{risk.name}</span>
+              <span className="mt-0.5 block text-[12.5px] text-(--color-dim)">
+                {detail
+                  ? `${cells.length} controls — ${inPlace} in place, ${partial} partial, ${missing} missing${na ? `, ${na} n/a` : ""}`
+                  : risk.description}
+              </span>
+            </span>
+
+            <span className="hidden lg:block">
+              <Meter value={score} color={BAND_COLOR[verdict]} />
+              <span className="mt-1.5 block font-mono text-[10.5px] text-(--color-dim)">
+                {detail ? "from its controls" : "declared posture"}
+              </span>
+            </span>
+
+            <span className="hidden lg:block">
+              {detail ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRiskAgent(agent.id);
+                    setTab("asi01");
+                  }}
+                  className="rounded-lg bg-(--color-accent) px-3 py-1.5 text-[11.5px] font-bold text-[#06101d]"
+                >
+                  {cells.length} controls →
+                </button>
+              ) : (
+                <span className="font-mono text-[10.5px] text-(--color-dim)">
+                  detail not transcribed
+                </span>
+              )}
+            </span>
+
+            <span
+              className={`rounded-md px-1.5 py-1.5 text-center font-mono text-[10px] font-bold tracking-wide uppercase ${BADGE_TONE[verdict]}`}
+            >
+              {VERDICT_LABEL[verdict]} {score}
+            </span>
+          </div>
+        );
+      })}
+    </Panel>
+  );
+}
+
 export function OwaspLive() {
-  const [view, setView] = useState<"risk" | "matrix">("risk");
+  const { owaspView: view, setOwaspView: setView, riskAgentId, setRiskAgent } = useShell();
   const [openRisk, setOpenRisk] = useState<AsiId | null>(null);
+  const selectedAgentId = riskAgentId ?? AGENTS[0].id;
 
   return (
     <div>
@@ -287,8 +411,8 @@ export function OwaspLive() {
 
       <SummaryStrip />
 
-      <div className="mb-4 flex gap-1.5">
-        {(["risk", "matrix"] as const).map((v) => (
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {(["risk", "agent", "matrix"] as const).map((v) => (
           <button
             key={v}
             type="button"
@@ -300,23 +424,37 @@ export function OwaspLive() {
                 : "border-(--color-line) bg-(--color-panel) text-(--color-mute) hover:border-(--color-accent) hover:text-(--color-ink)"
             }`}
           >
-            {v === "risk" ? "By risk" : "Full matrix"}
+            {v === "risk" ? "By risk" : v === "agent" ? "By agent" : "Full matrix"}
           </button>
         ))}
+        {view === "agent" ? (
+          <select
+            value={selectedAgentId}
+            onChange={(e) => setRiskAgent(e.target.value)}
+            aria-label="Choose an agent"
+            className="min-w-[250px] rounded-full border border-(--color-line) bg-(--color-panel) px-3.5 py-2 text-[13px] text-(--color-ink) outline-none focus:border-(--color-accent)"
+          >
+            {AGENTS.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} · {a.department}
+              </option>
+            ))}
+          </select>
+        ) : null}
       </div>
 
-      {view === "risk" ? (
-        ASI_IDS.map((id) => (
-          <RiskCard
-            key={id}
-            id={id}
-            open={openRisk === id}
-            onToggle={() => setOpenRisk((cur) => (cur === id ? null : id))}
-          />
-        ))
-      ) : (
-        <Matrix />
-      )}
+      {view === "risk"
+        ? ASI_IDS.map((id) => (
+            <RiskCard
+              key={id}
+              id={id}
+              open={openRisk === id}
+              onToggle={() => setOpenRisk((cur) => (cur === id ? null : id))}
+            />
+          ))
+        : view === "agent"
+          ? <ByAgent agentId={selectedAgentId} />
+          : <Matrix />}
     </div>
   );
 }

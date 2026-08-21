@@ -111,7 +111,7 @@ function ControlRow({ id, score }: { id: (typeof ASI_IDS)[number]; score: number
 }
 
 export function AgentDrawer() {
-  const { openAgentId, closeAgent, setTab, focusAgent } = useShell();
+  const { openAgentId, closeAgent, setTab, focusAgent, showAgentRisks } = useShell();
   const agent = openAgentId ? agentById(openAgentId) : undefined;
   const open = Boolean(agent);
 
@@ -130,11 +130,18 @@ export function AgentDrawer() {
           open ? "translate-x-0" : "translate-x-[102%]"
         }`}
       >
-        {agent ? <DrawerBody agent={agent} onClose={closeAgent} onShowOnMap={() => {
-          closeAgent();
-          focusAgent(agent.id);
-          setTab("deck");
-        }} /> : null}
+        {agent ? (
+          <DrawerBody
+            agent={agent}
+            onClose={closeAgent}
+            onShowOnMap={() => {
+              closeAgent();
+              focusAgent(agent.id);
+              setTab("deck");
+            }}
+            onShowRisks={() => showAgentRisks(agent.id)}
+          />
+        ) : null}
       </aside>
     </>
   );
@@ -144,10 +151,12 @@ function DrawerBody({
   agent,
   onClose,
   onShowOnMap,
+  onShowRisks,
 }: {
   agent: Agent;
   onClose: () => void;
   onShowOnMap: () => void;
+  onShowRisks: () => void;
 }) {
   const standing = standingScore(agent);
   const sBand = standingBand(agent);
@@ -228,13 +237,22 @@ function DrawerBody({
           ))}
         </div>
 
-        <button
-          type="button"
-          onClick={onShowOnMap}
-          className="mt-3.5 rounded-[10px] border border-(--color-line-2) px-3 py-1.5 text-[12.5px] font-semibold text-(--color-mute) hover:border-(--color-accent) hover:text-(--color-ink)"
-        >
-          See its connections on the map →
-        </button>
+        <div className="mt-3.5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onShowRisks}
+            className="rounded-[10px] bg-(--color-accent) px-3 py-1.5 text-[12.5px] font-bold text-[#06101d]"
+          >
+            See its OWASP controls →
+          </button>
+          <button
+            type="button"
+            onClick={onShowOnMap}
+            className="rounded-[10px] border border-(--color-line-2) px-3 py-1.5 text-[12.5px] font-semibold text-(--color-mute) hover:border-(--color-accent) hover:text-(--color-ink)"
+          >
+            See its connections on the map →
+          </button>
+        </div>
 
         <SectionLabel>Weakest three controls</SectionLabel>
         {weakestControls(agent, 3).map(([id, score]) => (

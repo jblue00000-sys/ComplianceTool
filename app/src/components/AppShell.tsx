@@ -13,6 +13,9 @@ export const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
   { id: "workforce", label: "Agent Workforce" },
 ];
 
+/** Which lens the OWASP Live tab is showing. */
+export type OwaspView = "risk" | "matrix" | "agent";
+
 interface ShellState {
   tab: TabId;
   setTab: (tab: TabId) => void;
@@ -25,6 +28,14 @@ interface ShellState {
   focusAgent: (id: string | null) => void;
   advisorOpen: boolean;
   setAdvisorOpen: (open: boolean) => void;
+  /** Lens the OWASP Live tab is showing. */
+  owaspView: OwaspView;
+  setOwaspView: (view: OwaspView) => void;
+  /** Agent the risk views are scoped to, or null for the whole estate. */
+  riskAgentId: string | null;
+  setRiskAgent: (id: string | null) => void;
+  /** Jump straight to one agent's ten OWASP controls. */
+  showAgentRisks: (id: string) => void;
 }
 
 const ShellContext = createContext<ShellState | null>(null);
@@ -41,10 +52,20 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [openAgentId, setOpenAgentId] = useState<string | null>(null);
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null);
   const [advisorOpen, setAdvisorOpen] = useState(false);
+  const [owaspView, setOwaspView] = useState<OwaspView>("risk");
+  const [riskAgentId, setRiskAgent] = useState<string | null>(null);
 
   const openAgent = useCallback((id: string) => setOpenAgentId(id), []);
   const closeAgent = useCallback(() => setOpenAgentId(null), []);
   const focusAgent = useCallback((id: string | null) => setFocusedAgentId(id), []);
+
+  // One route into the per-agent risk view, so every caller lands identically.
+  const showAgentRisks = useCallback((id: string) => {
+    setRiskAgent(id);
+    setOwaspView("agent");
+    setOpenAgentId(null);
+    setTab("owasp");
+  }, []);
 
   const value = useMemo<ShellState>(
     () => ({
@@ -57,8 +78,24 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       focusAgent,
       advisorOpen,
       setAdvisorOpen,
+      owaspView,
+      setOwaspView,
+      riskAgentId,
+      setRiskAgent,
+      showAgentRisks,
     }),
-    [tab, openAgentId, openAgent, closeAgent, focusedAgentId, focusAgent, advisorOpen],
+    [
+      tab,
+      openAgentId,
+      openAgent,
+      closeAgent,
+      focusedAgentId,
+      focusAgent,
+      advisorOpen,
+      owaspView,
+      riskAgentId,
+      showAgentRisks,
+    ],
   );
 
   return <ShellContext.Provider value={value}>{children}</ShellContext.Provider>;

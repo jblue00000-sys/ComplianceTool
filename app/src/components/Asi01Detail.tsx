@@ -280,10 +280,12 @@ function DrillRow({
 }
 
 function DrillDown() {
-  const { openAgent } = useShell();
+  const { openAgent, riskAgentId, setRiskAgent } = useShell();
   const detail = riskDetail("ASI01");
   const [view, setView] = useState<"agent" | "control">("agent");
-  const [agentId, setAgentId] = useState(AGENTS[0].id);
+  // The agent is shell state so arriving from the Flight Deck or OWASP Live
+  // lands on the right one rather than resetting to the first in the list.
+  const agentId = riskAgentId ?? AGENTS[0].id;
   const [controlN, setControlN] = useState(1);
   if (!detail) return null;
 
@@ -311,7 +313,7 @@ function DrillDown() {
         {view === "agent" ? (
           <select
             value={agentId}
-            onChange={(e) => setAgentId(e.target.value)}
+            onChange={(e) => setRiskAgent(e.target.value)}
             aria-label="Choose an agent"
             className={selectClass}
           >
