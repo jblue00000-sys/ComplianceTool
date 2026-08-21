@@ -4,9 +4,11 @@ import { AGENTS, ORGANISATION } from "@/lib/data";
 import { Advisor } from "@/components/Advisor";
 import { AgentDrawer } from "@/components/AgentDrawer";
 import { ShellProvider, TABS, useShell } from "@/components/AppShell";
+import { Asi01Detail } from "@/components/Asi01Detail";
 import { FlightDeck } from "@/components/FlightDeck";
 import { GuidedReview } from "@/components/GuidedReview";
 import { OwaspLive } from "@/components/OwaspLive";
+import { Remediation } from "@/components/Remediation";
 import { Workforce } from "@/components/Workforce";
 
 function TopBar() {
@@ -57,6 +59,8 @@ function Body() {
     <main className="p-5.5">
       {tab === "deck" ? <FlightDeck /> : null}
       {tab === "owasp" ? <OwaspLive /> : null}
+      {tab === "asi01" ? <Asi01Detail /> : null}
+      {tab === "tasks" ? <Remediation /> : null}
       {tab === "review" ? <GuidedReview /> : null}
       {tab === "workforce" ? <Workforce /> : null}
     </main>

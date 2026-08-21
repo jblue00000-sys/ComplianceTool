@@ -33,7 +33,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 88,
     oversight: 22,
-    posture: { ASI01: 28, ASI02: 31, ASI03: 35, ASI04: 62, ASI05: 80, ASI06: 40, ASI07: 70, ASI08: 38, ASI09: 25, ASI10: 44 },
+    posture: { ASI01: 23, ASI02: 31, ASI03: 35, ASI04: 62, ASI05: 80, ASI06: 40, ASI07: 70, ASI08: 38, ASI09: 25, ASI10: 44 },
   },
   {
     id: "dev-assistant",
@@ -58,7 +58,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 61,
     oversight: 70,
-    posture: { ASI01: 64, ASI02: 55, ASI03: 60, ASI04: 48, ASI05: 38, ASI06: 72, ASI07: 75, ASI08: 52, ASI09: 58, ASI10: 66 },
+    posture: { ASI01: 62, ASI02: 55, ASI03: 60, ASI04: 48, ASI05: 38, ASI06: 72, ASI07: 75, ASI08: 52, ASI09: 58, ASI10: 66 },
   },
   {
     id: "reporting-analyst",
@@ -79,7 +79,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 24,
     oversight: 92,
-    posture: { ASI01: 86, ASI02: 90, ASI03: 88, ASI04: 80, ASI05: 92, ASI06: 84, ASI07: 88, ASI08: 90, ASI09: 86, ASI10: 88 },
+    posture: { ASI01: 82, ASI02: 90, ASI03: 88, ASI04: 80, ASI05: 92, ASI06: 84, ASI07: 88, ASI08: 90, ASI09: 86, ASI10: 88 },
   },
   {
     id: "customer-support-bot",
@@ -103,7 +103,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 72,
     oversight: 34,
-    posture: { ASI01: 32, ASI02: 44, ASI03: 48, ASI04: 66, ASI05: 78, ASI06: 36, ASI07: 74, ASI08: 45, ASI09: 30, ASI10: 40 },
+    posture: { ASI01: 28, ASI02: 44, ASI03: 48, ASI04: 66, ASI05: 78, ASI06: 36, ASI07: 74, ASI08: 45, ASI09: 30, ASI10: 40 },
   },
   {
     id: "hr-intake-agent",
@@ -126,7 +126,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 33,
     oversight: 78,
-    posture: { ASI01: 70, ASI02: 82, ASI03: 76, ASI04: 74, ASI05: 88, ASI06: 62, ASI07: 84, ASI08: 80, ASI09: 72, ASI10: 78 },
+    posture: { ASI01: 68, ASI02: 82, ASI03: 76, ASI04: 74, ASI05: 88, ASI06: 62, ASI07: 84, ASI08: 80, ASI09: 72, ASI10: 78 },
   },
   {
     id: "scheduler",
@@ -148,7 +148,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 21,
     oversight: 66,
-    posture: { ASI01: 78, ASI02: 86, ASI03: 70, ASI04: 76, ASI05: 90, ASI06: 74, ASI07: 80, ASI08: 86, ASI09: 80, ASI10: 82 },
+    posture: { ASI01: 76, ASI02: 86, ASI03: 70, ASI04: 76, ASI05: 90, ASI06: 74, ASI07: 80, ASI08: 86, ASI09: 80, ASI10: 82 },
   },
   {
     id: "contract-reviewer",
@@ -171,7 +171,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 47,
     oversight: 74,
-    posture: { ASI01: 52, ASI02: 78, ASI03: 66, ASI04: 70, ASI05: 84, ASI06: 46, ASI07: 82, ASI08: 76, ASI09: 44, ASI10: 64 },
+    posture: { ASI01: 51, ASI02: 78, ASI03: 66, ASI04: 70, ASI05: 84, ASI06: 46, ASI07: 82, ASI08: 76, ASI09: 44, ASI10: 64 },
   },
   {
     id: "campaign-writer",
@@ -195,7 +195,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 58,
     oversight: 52,
-    posture: { ASI01: 56, ASI02: 60, ASI03: 64, ASI04: 72, ASI05: 86, ASI06: 58, ASI07: 78, ASI08: 70, ASI09: 50, ASI10: 62 },
+    posture: { ASI01: 51, ASI02: 60, ASI03: 64, ASI04: 72, ASI05: 86, ASI06: 58, ASI07: 78, ASI08: 70, ASI09: 50, ASI10: 62 },
   },
   {
     id: "it-provisioning-agent",
@@ -220,7 +220,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 94,
     oversight: 28,
-    posture: { ASI01: 26, ASI02: 24, ASI03: 18, ASI04: 58, ASI05: 70, ASI06: 34, ASI07: 62, ASI08: 22, ASI09: 30, ASI10: 28 },
+    posture: { ASI01: 22, ASI02: 24, ASI03: 18, ASI04: 58, ASI05: 70, ASI06: 34, ASI07: 62, ASI08: 22, ASI09: 30, ASI10: 28 },
   },
   {
     id: "treasury-reconciler",
@@ -244,7 +244,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 91,
     oversight: 61,
-    posture: { ASI01: 48, ASI02: 52, ASI03: 56, ASI04: 64, ASI05: 82, ASI06: 50, ASI07: 72, ASI08: 44, ASI09: 46, ASI10: 58 },
+    posture: { ASI01: 46, ASI02: 52, ASI03: 56, ASI04: 64, ASI05: 82, ASI06: 50, ASI07: 72, ASI08: 44, ASI09: 46, ASI10: 58 },
   },
   {
     id: "supplier-screener",
@@ -267,7 +267,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 29,
     oversight: 84,
-    posture: { ASI01: 60, ASI02: 84, ASI03: 80, ASI04: 56, ASI05: 88, ASI06: 54, ASI07: 86, ASI08: 84, ASI09: 78, ASI10: 80 },
+    posture: { ASI01: 56, ASI02: 84, ASI03: 80, ASI04: 56, ASI05: 88, ASI06: 54, ASI07: 86, ASI08: 84, ASI09: 78, ASI10: 80 },
   },
   {
     id: "security-triage-agent",
@@ -290,7 +290,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 79,
     oversight: 69,
-    posture: { ASI01: 54, ASI02: 58, ASI03: 62, ASI04: 60, ASI05: 76, ASI06: 56, ASI07: 66, ASI08: 40, ASI09: 52, ASI10: 60 },
+    posture: { ASI01: 51, ASI02: 58, ASI03: 62, ASI04: 60, ASI05: 76, ASI06: 56, ASI07: 66, ASI08: 40, ASI09: 52, ASI10: 60 },
   },
   {
     id: "exec-briefing-agent",
@@ -313,7 +313,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 44,
     oversight: 40,
-    posture: { ASI01: 22, ASI02: 74, ASI03: 58, ASI04: 68, ASI05: 84, ASI06: 26, ASI07: 70, ASI08: 66, ASI09: 28, ASI10: 46 },
+    posture: { ASI01: 17, ASI02: 74, ASI03: 58, ASI04: 68, ASI05: 84, ASI06: 26, ASI07: 70, ASI08: 66, ASI09: 28, ASI10: 46 },
   },
   {
     id: "invoice-processor",
@@ -336,7 +336,7 @@ export const AGENTS: readonly Agent[] = [
     ],
     authority: 96,
     oversight: 14,
-    posture: { ASI01: 18, ASI02: 22, ASI03: 26, ASI04: 54, ASI05: 74, ASI06: 20, ASI07: 60, ASI08: 24, ASI09: 16, ASI10: 22 },
+    posture: { ASI01: 17, ASI02: 22, ASI03: 26, ASI04: 54, ASI05: 74, ASI06: 20, ASI07: 60, ASI08: 24, ASI09: 16, ASI10: 22 },
   },
 ];
 

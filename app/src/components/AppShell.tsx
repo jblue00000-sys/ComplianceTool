@@ -3,11 +3,12 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-export type TabId = "deck" | "owasp" | "review" | "workforce";
+export type TabId = "deck" | "owasp" | "asi01" | "tasks" | "review" | "workforce";
 
 export const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
   { id: "deck", label: "Flight Deck" },
   { id: "owasp", label: "OWASP Live" },
+  { id: "tasks", label: "Remediation" },
   { id: "review", label: "Guided Review" },
   { id: "workforce", label: "Agent Workforce" },
 ];

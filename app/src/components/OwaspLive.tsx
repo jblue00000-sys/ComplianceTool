@@ -14,6 +14,7 @@ import {
   VERDICT_LABEL,
 } from "@/lib/scoring";
 import type { AsiId, Band } from "@/lib/types";
+import { riskDetail } from "@/lib/mitigations";
 import { useShell } from "./AppShell";
 import { BAND_COLOR, Gauge, PageHeading, Panel } from "./ui";
 
@@ -83,7 +84,8 @@ function RiskCard({
   open: boolean;
   onToggle: () => void;
 }) {
-  const { openAgent } = useShell();
+  const { openAgent, setTab } = useShell();
+  const detail = riskDetail(id);
   const risk = ASI_RISKS.find((r) => r.id === id);
   const stats = useMemo(() => riskStats(id, AGENTS), [id]);
   if (!risk) return null;
@@ -169,6 +171,20 @@ function RiskCard({
             <b className="text-[#b3a5ff]">What &ldquo;compliant&rdquo; means here:</b>{" "}
             {risk.compliantMeans}
           </p>
+
+          {detail ? (
+            <button
+              type="button"
+              onClick={() => setTab("asi01")}
+              className="mt-3.5 rounded-[10px] bg-(--color-accent) px-3.5 py-2 text-[12.5px] font-bold text-[#06101d]"
+            >
+              See the {detail.controls.length} controls behind this score →
+            </button>
+          ) : (
+            <p className="mt-3.5 text-[12.3px] text-(--color-dim)">
+              Control-level detail for this risk has not been transcribed yet.
+            </p>
+          )}
         </div>
       ) : null}
     </div>
