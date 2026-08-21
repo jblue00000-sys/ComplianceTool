@@ -276,6 +276,132 @@ function Matrix() {
 }
 
 
+
+const CONTROL_TONE: Record<string, string> = {
+  "in-place": "bg-[rgba(47,191,135,0.16)] text-[#5fdcaa]",
+  partial: "bg-[rgba(240,180,41,0.16)] text-[#f5c860]",
+  missing: "bg-[rgba(244,97,107,0.16)] text-[#ff8b93]",
+  "not-applicable": "bg-[rgba(90,107,131,0.18)] text-[#9fb0c6]",
+};
+
+/**
+ * One risk for one agent. Where the controls have been transcribed the row
+ * opens to show which specific controls pass, partially pass or fail and the
+ * evidence behind each - the headline counts alone never answer "which ones".
+ */
+function AgentRiskRow({ agentId, riskId }: { agentId: string; riskId: AsiId }) {
+  const { setTab, setRiskAgent } = useShell();
+  const [open, setOpen] = useState(false);
+  const agent = agentById(agentId);
+  const risk = ASI_RISKS.find((r) => r.id === riskId);
+  const detail = riskDetail(riskId);
+  const cells = useMemo(
+    () => (detail ? assessmentsFor(agentId, riskId) : []),
+    [detail, agentId, riskId],
+  );
+  if (!agent || !risk) return null;
+
+  const score = agent.posture[riskId];
+  const verdict = band(score);
+  const inPlace = cells.filter((c) => c.status === "in-place").length;
+  const partial = cells.filter((c) => c.status === "partial").length;
+  const missing = cells.filter((c) => c.status === "missing").length;
+  const na = cells.filter((c) => c.status === "not-applicable").length;
+
+  const Row = detail ? "button" : "div";
+
+  return (
+    <div className="border-b border-(--color-line) last:border-b-0">
+      <Row
+        {...(detail
+          ? { type: "button" as const, onClick: () => setOpen((v) => !v), "aria-expanded": open }
+          : {})}
+        className={`grid w-full grid-cols-[64px_minmax(0,1fr)_92px] items-center gap-3.5 px-4 py-3.5 text-left lg:grid-cols-[64px_minmax(0,1fr)_150px_130px_92px] ${
+          detail ? "transition hover:bg-(--color-panel-2)" : ""
+        }`}
+      >
+        <span className="font-mono text-[13px] font-extrabold tracking-wide text-(--color-accent)">
+          {risk.id}
+        </span>
+
+        <span className="min-w-0">
+          <span className="block text-[14.5px] font-bold">{risk.name}</span>
+          <span className="mt-0.5 block text-[12.5px] text-(--color-dim)">
+            {detail
+              ? `${cells.length} controls — ${inPlace} in place, ${partial} partial, ${missing} missing${na ? `, ${na} n/a` : ""}`
+              : risk.description}
+          </span>
+        </span>
+
+        <span className="hidden lg:block">
+          <Meter value={score} color={BAND_COLOR[verdict]} />
+          <span className="mt-1.5 block font-mono text-[10.5px] text-(--color-dim)">
+            {detail ? "from its controls" : "declared posture"}
+          </span>
+        </span>
+
+        <span className="hidden lg:block">
+          {detail ? (
+            <span className="font-mono text-[10.5px] text-(--color-accent)">
+              {open ? "hide the controls" : "show which controls"}
+            </span>
+          ) : (
+            <span className="font-mono text-[10.5px] text-(--color-dim)">
+              detail not transcribed
+            </span>
+          )}
+        </span>
+
+        <span
+          className={`rounded-md px-1.5 py-1.5 text-center font-mono text-[10px] font-bold tracking-wide uppercase ${BADGE_TONE[verdict]}`}
+        >
+          {VERDICT_LABEL[verdict]} {score}
+        </span>
+      </Row>
+
+      {open && detail ? (
+        <div className="border-t border-(--color-line) bg-[#0c1220] px-4 py-3.5">
+          {cells.map((cell) => {
+            const control = detail.controls.find((c) => c.n === cell.controlN);
+            if (!control) return null;
+            return (
+              <div
+                key={cell.controlN}
+                className="grid grid-cols-[30px_minmax(0,1fr)_112px] items-center gap-3 border-b border-(--color-line) py-2.5 last:border-b-0"
+              >
+                <span className="grid size-7 shrink-0 place-items-center rounded-lg border border-(--color-line-2) bg-(--color-panel-3) font-mono text-[11px] font-extrabold text-(--color-accent)">
+                  {control.n}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[13.3px] font-semibold">{control.short}</span>
+                  <span className="mt-0.5 block text-[12.2px] text-(--color-dim)">
+                    {cell.evidence}
+                  </span>
+                </span>
+                <span
+                  className={`rounded-md px-2 py-1.5 text-center font-mono text-[10px] font-bold tracking-wide uppercase ${CONTROL_TONE[cell.status]}`}
+                >
+                  {cell.status === "not-applicable" ? "N/A" : cell.status.replace("-", " ")}
+                </span>
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => {
+              setRiskAgent(agentId);
+              setTab("asi01");
+            }}
+            className="mt-3.5 rounded-lg bg-(--color-accent) px-3.5 py-2 text-[12.5px] font-bold text-[#06101d]"
+          >
+            Open the full detail, including how to close each gap →
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /* ------------------------------------------------------- by agent ---- */
 
 /**
@@ -283,7 +409,6 @@ function Matrix() {
  * not "who is failing control 6" but "what does my agent need".
  */
 function ByAgent({ agentId }: { agentId: string }) {
-  const { setTab, setRiskAgent } = useShell();
   const agent = agentById(agentId);
   const totals = useMemo(() => {
     if (!agent) return { pass: 0, partial: 0, fail: 0 };
@@ -312,6 +437,7 @@ function ByAgent({ agentId }: { agentId: string }) {
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-5">
           <span className="font-mono text-[11px] text-(--color-dim)">
+            of the ten risks:{" "}
             <b style={{ color: "#5fdcaa" }}>{totals.pass}</b> pass ·{" "}
             <b style={{ color: "#f5c860" }}>{totals.partial}</b> partial ·{" "}
             <b style={{ color: "#ff8b93" }}>{totals.fail}</b> fail
@@ -330,68 +456,9 @@ function ByAgent({ agentId }: { agentId: string }) {
         </div>
       </div>
 
-      {ASI_RISKS.map((risk) => {
-        const score = agent.posture[risk.id];
-        const verdict = band(score);
-        const detail = riskDetail(risk.id);
-        const cells = detail ? assessmentsFor(agent.id, risk.id) : [];
-        const inPlace = cells.filter((c) => c.status === "in-place").length;
-        const partial = cells.filter((c) => c.status === "partial").length;
-        const missing = cells.filter((c) => c.status === "missing").length;
-        const na = cells.filter((c) => c.status === "not-applicable").length;
-
-        return (
-          <div
-            key={risk.id}
-            className="grid grid-cols-[64px_minmax(0,1fr)_92px] items-center gap-3.5 border-b border-(--color-line) px-4 py-3.5 last:border-b-0 lg:grid-cols-[64px_minmax(0,1fr)_150px_130px_92px]"
-          >
-            <span className="font-mono text-[13px] font-extrabold tracking-wide text-(--color-accent)">
-              {risk.id}
-            </span>
-
-            <span className="min-w-0">
-              <span className="block text-[14.5px] font-bold">{risk.name}</span>
-              <span className="mt-0.5 block text-[12.5px] text-(--color-dim)">
-                {detail
-                  ? `${cells.length} controls — ${inPlace} in place, ${partial} partial, ${missing} missing${na ? `, ${na} n/a` : ""}`
-                  : risk.description}
-              </span>
-            </span>
-
-            <span className="hidden lg:block">
-              <Meter value={score} color={BAND_COLOR[verdict]} />
-              <span className="mt-1.5 block font-mono text-[10.5px] text-(--color-dim)">
-                {detail ? "from its controls" : "declared posture"}
-              </span>
-            </span>
-
-            <span className="hidden lg:block">
-              {detail ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRiskAgent(agent.id);
-                    setTab("asi01");
-                  }}
-                  className="rounded-lg bg-(--color-accent) px-3 py-1.5 text-[11.5px] font-bold text-[#06101d]"
-                >
-                  {cells.length} controls →
-                </button>
-              ) : (
-                <span className="font-mono text-[10.5px] text-(--color-dim)">
-                  detail not transcribed
-                </span>
-              )}
-            </span>
-
-            <span
-              className={`rounded-md px-1.5 py-1.5 text-center font-mono text-[10px] font-bold tracking-wide uppercase ${BADGE_TONE[verdict]}`}
-            >
-              {VERDICT_LABEL[verdict]} {score}
-            </span>
-          </div>
-        );
-      })}
+      {ASI_RISKS.map((risk) => (
+        <AgentRiskRow key={risk.id} agentId={agent.id} riskId={risk.id} />
+      ))}
     </Panel>
   );
 }

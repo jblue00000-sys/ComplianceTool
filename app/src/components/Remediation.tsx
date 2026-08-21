@@ -137,8 +137,13 @@ function TaskRow({ task, onOpenAgent }: { task: RemediationTask; onOpenAgent: ()
                 What closes it
               </div>
               <ol className="m-0 list-decimal pl-4 text-[12.9px] text-(--color-mute)">
-                {control.steps.map((s) => (
-                  <li key={s} className="mb-1.5">{s}</li>
+                {control.steps.map((step) => (
+                  <li key={step.text} className="mb-2" title={step.example}>
+                    {step.text}
+                    <span className="mt-1 block text-[12px] text-(--color-dim) italic">
+                      {step.example}
+                    </span>
+                  </li>
                 ))}
               </ol>
             </div>
