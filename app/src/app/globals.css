@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+/*
+ * One palette, defined once. Every surface in the product uses these tokens so
+ * a score, a band or a panel looks identical on every screen.
+ */
+@theme {
+  --color-bg: #080b11;
+  --color-panel: #101724;
+  --color-panel-2: #16202f;
+  --color-panel-3: #1c2739;
+  --color-line: #233247;
+  --color-line-2: #2c3d57;
+  --color-ink: #e9eff9;
+  --color-mute: #94a4bf;
+  --color-dim: #65788f;
+  --color-accent: #5b9dff;
+  --color-accent-2: #7f6bff;
+  --color-good: #2fbf87;
+  --color-warn: #f0b429;
+  --color-bad: #f4616b;
+
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Shared eyebrow label used above every section heading. */
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
