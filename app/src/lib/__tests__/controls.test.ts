@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   assessmentsFor,
   controlCoverage,
+  hasAssessments,
   remediationTasks,
   rollUpScore,
 } from "../controls";
 import { AGENTS } from "../data";
 import { riskDetail } from "../mitigations";
+import type { AsiId } from "../types";
 
 const CONTROL_COUNT = 9;
 
@@ -74,8 +76,9 @@ describe("controlCoverage", () => {
     expect(detail).toBeDefined();
     for (const control of detail!.controls) {
       const cov = controlCoverage(control.n);
-      expect(cov.inPlace + cov.partial + cov.missing + cov.notApplicable).toBe(AGENTS.length);
-      expect(cov.applicable).toBe(AGENTS.length - cov.notApplicable);
+      expect(cov).not.toBeNull();
+      expect(cov!.inPlace + cov!.partial + cov!.missing + cov!.notApplicable).toBe(AGENTS.length);
+      expect(cov!.applicable).toBe(AGENTS.length - cov!.notApplicable);
     }
   });
 });
@@ -132,5 +135,49 @@ describe("published mitigation content", () => {
       expect(control.guideline.length).toBeGreaterThan(60);
       expect(control.verification.length).toBeGreaterThan(20);
     }
+  });
+});
+
+describe("risks with no assessment matrix", () => {
+  // ASI02 has a transcribed control catalogue but nobody has assessed the
+  // agents against it. Reusing ASI01's cells here would put a rating and an
+  // evidence line against a control nobody has looked at.
+  const UNASSESSED: AsiId = "ASI02";
+
+  it("has controls transcribed, so this is about the matrix and not the catalogue", () => {
+    expect(riskDetail(UNASSESSED)?.controls.length).toBeGreaterThan(0);
+    expect(hasAssessments(UNASSESSED)).toBe(false);
+  });
+
+  it("yields no assessments for any agent", () => {
+    for (const agent of AGENTS) {
+      expect(assessmentsFor(agent.id, UNASSESSED)).toEqual([]);
+    }
+  });
+
+  it("never borrows another risk's evidence", () => {
+    const asi01 = new Set(assessmentsFor(AGENTS[0].id, "ASI01").map((a) => a.evidence));
+    expect(asi01.size).toBeGreaterThan(0);
+    for (const agent of AGENTS) {
+      for (const a of assessmentsFor(agent.id, UNASSESSED)) {
+        expect(asi01.has(a.evidence)).toBe(false);
+      }
+    }
+  });
+
+  it("rolls up to no score rather than to zero", () => {
+    for (const agent of AGENTS) {
+      expect(rollUpScore(agent.id, UNASSESSED)).toBeNull();
+    }
+  });
+
+  it("reports no coverage rather than nobody having the control", () => {
+    for (const control of riskDetail(UNASSESSED)!.controls) {
+      expect(controlCoverage(control.n, UNASSESSED)).toBeNull();
+    }
+  });
+
+  it("raises no remediation tasks against an unassessed risk", () => {
+    expect(remediationTasks(UNASSESSED)).toEqual([]);
   });
 });
