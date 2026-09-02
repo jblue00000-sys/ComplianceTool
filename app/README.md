@@ -11,14 +11,19 @@ npm install
 npm run dev
 ```
 
-## The four surfaces
+## The surfaces
 
 | Tab | Who it is for | What it answers |
 | --- | --- | --- |
 | **Flight Deck** | Security operations | If this agent is compromised at 3am, what does it reach? |
 | **OWASP Live** | Compliance managers | Which agents pass, partially pass, or fail each of the ten risks? |
+| **Remediation** | Whoever has to fix it | Which control gaps are open, who owns them, and in what order? |
 | **Guided Review** | Anyone, no expertise needed | A six-question assessment that needs no integration at all. |
 | **Agent Workforce** | Risk, audit and business owners | Who owns this agent, and when does its access expire? |
+
+OWASP Live opens into a **control detail** view for a risk whose controls have
+been transcribed: the controls the standard asks for, how to close each one, and
+— where the agents have been assessed against them — where each agent stands.
 
 An **advisor** is available from every tab. It answers only from the register in
 `src/lib/data.ts` and states the basis for every answer, so no claim it makes is
@@ -45,7 +50,10 @@ live in `src/lib/scoring.ts` as `PASS_THRESHOLD` and `PARTIAL_THRESHOLD`.
 | Path | Holds |
 | --- | --- |
 | `src/lib/types.ts` | The domain model. |
-| `src/lib/owasp.ts` | The ten risks. Treated as a display layer, so a revision of the standard changes this file alone. |
+| `src/lib/owasp.ts` | The ten risks as a catalogue: name, one-line description, and what compliant means. |
+| `src/lib/risks/` | One module per risk, holding the controls and attack scenarios transcribed from the standard, plus the shape they share. ASI01–ASI04 are transcribed; the rest are stubs carrying the published counts. |
+| `src/lib/mitigations.ts` | The index over those modules: detail lookup, whether a risk is transcribed, and the coverage counts. |
+| `src/lib/controls.ts` | Per-agent control assessments, held per risk. Only ASI01 has an assessment matrix; a risk without one has no per-agent status, and every screen says so rather than borrowing another risk's ratings. |
 | `src/lib/scoring.ts` | Thresholds, bands and every roll-up. Nothing recomputes these locally. |
 | `src/lib/data.ts` | Demonstration register. **Replace this module with real ingestion**; no component reaches for agent data directly. |
 | `src/components/` | One file per surface, plus the shared UI kit, detail drawer and advisor. |
@@ -55,3 +63,7 @@ live in `src/lib/scoring.ts` as `PASS_THRESHOLD` and `PARTIAL_THRESHOLD`.
 Every screen runs on demonstration data for a fictional customer, Northwind
 Group. The ingestion layer — guided self-assessment, agent configuration,
 identity and cloud connectors, and live activity telemetry — is not built yet.
+
+Control detail is transcribed for ASI01–ASI04; ASI05–ASI10 show the catalogue
+entry only. Per-agent control assessments exist for ASI01 alone, so the other
+risks show the published controls without a per-agent verdict.

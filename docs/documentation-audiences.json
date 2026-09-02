@@ -205,6 +205,10 @@
       "audience": "public-product"
     },
     {
+      "path": "app/README.md",
+      "audience": "public-product"
+    },
+    {
       "path": "docs/architecture.md",
       "audience": "maintainer-architecture"
     },

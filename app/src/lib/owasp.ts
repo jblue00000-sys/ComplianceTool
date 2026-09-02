@@ -3,8 +3,10 @@ import type { AsiId, AsiRisk } from "./types";
 /**
  * OWASP Top 10 for Agentic Applications, 2026 edition (published 9 Dec 2025).
  *
- * This catalogue is the display layer. Control scores live on the agent record,
- * so a future revision of the standard is a change to this file alone.
+ * This catalogue is the display layer: name, description, and what compliant
+ * means. Control scores live on the agent record, and the transcribed control
+ * detail lives one module per risk under `risks/`, so a future revision of the
+ * standard changes this file and the risk modules it touches, nothing else.
  */
 export const ASI_RISKS: readonly AsiRisk[] = [
   {
