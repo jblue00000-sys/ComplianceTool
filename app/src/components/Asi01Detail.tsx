@@ -299,7 +299,8 @@ function EstateControlRow({
   const { openAgent, setRiskAgent } = useShell();
   const control = riskDetail("ASI01")?.controls.find((c) => c.n === controlN);
   const cov = controlCoverage(controlN);
-  if (!control) return null;
+  // This surface is ASI01, which is assessed, so coverage is always present.
+  if (!control || !cov) return null;
   const total = AGENTS.length || 1;
 
   const rank: Record<ControlStatus, number> = {

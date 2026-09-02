@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { AGENTS, agentById } from "@/lib/data";
-import { assessmentsFor } from "@/lib/controls";
+import { assessmentsFor, hasAssessments } from "@/lib/controls";
 import { ASI_IDS, ASI_RISKS } from "@/lib/owasp";
 import { riskDetail } from "@/lib/mitigations";
 import {
@@ -16,7 +16,7 @@ import {
   VERDICT_LABEL,
 } from "@/lib/scoring";
 import type { AsiId, Band } from "@/lib/types";
-import { useShell } from "./AppShell";
+import { useShell, type TabId } from "./AppShell";
 import { Avatar, BAND_COLOR, Gauge, Meter, PageHeading, Panel } from "./ui";
 
 const BADGE_TONE: Record<Band, string> = {
@@ -173,7 +173,7 @@ function RiskCard({
             {risk.compliantMeans}
           </p>
 
-          {detail ? (
+          {detail && hasAssessments(id) ? (
             <button
               type="button"
               onClick={() => setTab("asi01")}
@@ -181,6 +181,12 @@ function RiskCard({
             >
               See the {detail.controls.length} controls behind this score →
             </button>
+          ) : detail ? (
+            <p className="mt-3.5 text-[12.3px] text-(--color-dim)">
+              The {detail.controls.length} controls the standard asks for are transcribed, with
+              how to close each one. No agent has been assessed against them yet, so this score
+              is a declared posture rather than a roll-up of those controls.
+            </p>
           ) : (
             <p className="mt-3.5 text-[12.3px] text-(--color-dim)">
               Control-level detail for this risk has not been transcribed yet.
@@ -285,9 +291,23 @@ const CONTROL_TONE: Record<string, string> = {
 };
 
 /**
+ * The tab holding each risk's own detail page. A risk that is absent has no
+ * page of its own, and the reader is offered no link at all — sending them to
+ * another risk's page reads as an answer to the question they asked.
+ */
+const DETAIL_TAB: Partial<Record<AsiId, TabId>> = {
+  ASI01: "asi01",
+};
+
+/**
  * One risk for one agent. Where the controls have been transcribed the row
  * opens to show which specific controls pass, partially pass or fail and the
  * evidence behind each - the headline counts alone never answer "which ones".
+ *
+ * A risk can have its controls transcribed without this agent having been
+ * assessed against them. The row then shows the published control catalogue
+ * and says the assessment is outstanding, rather than reporting a status
+ * nobody has established.
  */
 function AgentRiskRow({ agentId, riskId }: { agentId: string; riskId: AsiId }) {
   const { setTab, setRiskAgent } = useShell();
@@ -303,6 +323,8 @@ function AgentRiskRow({ agentId, riskId }: { agentId: string; riskId: AsiId }) {
 
   const score = agent.posture[riskId];
   const verdict = band(score);
+  const assessed = cells.length > 0;
+  const detailTab = DETAIL_TAB[riskId];
   const inPlace = cells.filter((c) => c.status === "in-place").length;
   const partial = cells.filter((c) => c.status === "partial").length;
   const missing = cells.filter((c) => c.status === "missing").length;
@@ -327,23 +349,29 @@ function AgentRiskRow({ agentId, riskId }: { agentId: string; riskId: AsiId }) {
         <span className="min-w-0">
           <span className="block text-[14.5px] font-bold">{risk.name}</span>
           <span className="mt-0.5 block text-[12.5px] text-(--color-dim)">
-            {detail
+            {assessed
               ? `${cells.length} controls — ${inPlace} in place, ${partial} partial, ${missing} missing${na ? `, ${na} n/a` : ""}`
-              : risk.description}
+              : detail
+                ? `${detail.controls.length} controls the standard asks for — not yet assessed for this agent`
+                : risk.description}
           </span>
         </span>
 
         <span className="hidden lg:block">
           <Meter value={score} color={BAND_COLOR[verdict]} />
           <span className="mt-1.5 block font-mono text-[10.5px] text-(--color-dim)">
-            {detail ? "from its controls" : "declared posture"}
+            {assessed ? "from its controls" : "declared posture"}
           </span>
         </span>
 
         <span className="hidden lg:block">
           {detail ? (
             <span className="font-mono text-[10.5px] text-(--color-accent)">
-              {open ? "hide the controls" : "show which controls"}
+              {open
+                ? "hide the controls"
+                : assessed
+                  ? "show which controls"
+                  : "show what it asks for"}
             </span>
           ) : (
             <span className="font-mono text-[10.5px] text-(--color-dim)">
@@ -359,7 +387,33 @@ function AgentRiskRow({ agentId, riskId }: { agentId: string; riskId: AsiId }) {
         </span>
       </Row>
 
-      {open && detail ? (
+      {open && detail && !assessed ? (
+        <div className="border-t border-(--color-line) bg-[#0c1220] px-4 py-3.5">
+          <p className="mb-3 text-[12.4px] text-(--color-dim)">
+            These are the controls the standard asks for. Nobody has assessed{" "}
+            {agent.name} against them yet, so this risk&rsquo;s score is still the declared
+            posture rather than a roll-up of the controls below.
+          </p>
+          {detail.controls.map((control) => (
+            <div
+              key={control.n}
+              className="grid grid-cols-[30px_minmax(0,1fr)] items-start gap-3 border-b border-(--color-line) py-2.5 last:border-b-0"
+            >
+              <span className="grid size-7 shrink-0 place-items-center rounded-lg border border-(--color-line-2) bg-(--color-panel-3) font-mono text-[11px] font-extrabold text-(--color-accent)">
+                {control.n}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[13.3px] font-semibold">{control.name}</span>
+                <span className="mt-0.5 block text-[12.2px] text-(--color-dim)">
+                  {control.description}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {open && detail && assessed ? (
         <div className="border-t border-(--color-line) bg-[#0c1220] px-4 py-3.5">
           {cells.map((cell) => {
             const control = detail.controls.find((c) => c.n === cell.controlN);
@@ -386,16 +440,18 @@ function AgentRiskRow({ agentId, riskId }: { agentId: string; riskId: AsiId }) {
               </div>
             );
           })}
-          <button
-            type="button"
-            onClick={() => {
-              setRiskAgent(agentId);
-              setTab("asi01");
-            }}
-            className="mt-3.5 rounded-lg bg-(--color-accent) px-3.5 py-2 text-[12.5px] font-bold text-[#06101d]"
-          >
-            Open the full detail, including how to close each gap →
-          </button>
+          {detailTab ? (
+            <button
+              type="button"
+              onClick={() => {
+                setRiskAgent(agentId);
+                setTab(detailTab);
+              }}
+              className="mt-3.5 rounded-lg bg-(--color-accent) px-3.5 py-2 text-[12.5px] font-bold text-[#06101d]"
+            >
+              Open the full detail, including how to close each gap →
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
