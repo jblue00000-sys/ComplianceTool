@@ -5,6 +5,7 @@ import { AGENTS, agentById } from "@/lib/data";
 import {
   assessmentsFor,
   controlCoverage,
+  hasAssessments,
   remediationTasks,
   rollUpScore,
   STATUS_BAND,
@@ -12,7 +13,7 @@ import {
   type ControlAssessment,
   type ControlStatus,
 } from "@/lib/controls";
-import { riskDetail, RISK_COVERAGE, type Step } from "@/lib/mitigations";
+import { isTranscribed, riskDetail, RISK_COVERAGE, type Step } from "@/lib/mitigations";
 import { asiRisk } from "@/lib/owasp";
 import { band } from "@/lib/scoring";
 import { useShell } from "./AppShell";
@@ -299,7 +300,8 @@ function EstateControlRow({
   const { openAgent, setRiskAgent } = useShell();
   const control = riskDetail("ASI01")?.controls.find((c) => c.n === controlN);
   const cov = controlCoverage(controlN);
-  if (!control) return null;
+  // This surface is ASI01, which is assessed, so coverage is always present.
+  if (!control || !cov) return null;
   const total = AGENTS.length || 1;
 
   const rank: Record<ControlStatus, number> = {
@@ -400,7 +402,6 @@ function EstateControlRow({
 /* --------------------------------------------------------- coverage ----- */
 
 function Replication() {
-  const done = new Set(["ASI01"]);
   const totals = RISK_COVERAGE.reduce(
     (acc, r) => ({ controls: acc.controls + r.controls, scenarios: acc.scenarios + r.scenarios }),
     { controls: 0, scenarios: 0 },
@@ -422,9 +423,10 @@ function Replication() {
         </thead>
         <tbody>
           {RISK_COVERAGE.map((r) => {
-            const built = done.has(r.id);
+            const transcribed = isTranscribed(r.id);
+            const assessed = transcribed && hasAssessments(r.id);
             return (
-              <tr key={r.id} className={built ? "bg-[rgba(91,157,255,0.07)]" : undefined}>
+              <tr key={r.id} className={transcribed ? "bg-[rgba(91,157,255,0.07)]" : undefined}>
                 <td className="border-b border-(--color-line) px-3.5 py-2.5">
                   <b className="font-mono text-(--color-accent)">{r.id}</b> {asiRisk(r.id).name}
                 </td>
@@ -432,9 +434,15 @@ function Replication() {
                 <td className="border-b border-(--color-line) px-3.5 py-2.5">{r.scenarios}</td>
                 <td
                   className="border-b border-(--color-line) px-3.5 py-2.5"
-                  style={{ color: built ? BAND_COLOR.green : NEUTRAL }}
+                  style={{
+                    color: assessed ? BAND_COLOR.green : transcribed ? BAND_COLOR.amber : NEUTRAL,
+                  }}
                 >
-                  {built ? "Built — you are looking at it" : "Same structure, content to transcribe"}
+                  {assessed
+                    ? "Built — you are looking at it"
+                    : transcribed
+                      ? "Transcribed — agents not yet assessed against it"
+                      : "Same structure, content to transcribe"}
                 </td>
               </tr>
             );

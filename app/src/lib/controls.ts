@@ -37,7 +37,7 @@ export const STATUS_BAND: Record<ControlStatus, Band | "neutral"> = {
 
 type Cells = Record<number, "in" | "pa" | "mi" | "na">;
 
-const RAW: Record<string, Cells> = {
+const ASI01_CELLS: Record<string, Cells> = {
   "procurement-assistant": { 1: "pa", 2: "pa", 3: "in", 4: "mi", 5: "mi", 6: "mi", 7: "mi", 8: "mi", 9: "mi" },
   "dev-assistant": { 1: "in", 2: "pa", 3: "mi", 4: "mi", 5: "mi", 6: "in", 7: "in", 8: "in", 9: "in" },
   "reporting-analyst": { 1: "in", 2: "in", 3: "in", 4: "pa", 5: "mi", 6: "na", 7: "in", 8: "in", 9: "in" },
@@ -53,6 +53,24 @@ const RAW: Record<string, Cells> = {
   "exec-briefing-agent": { 1: "mi", 2: "pa", 3: "in", 4: "mi", 5: "mi", 6: "mi", 7: "mi", 8: "mi", 9: "mi" },
   "invoice-processor": { 1: "in", 2: "mi", 3: "mi", 4: "mi", 5: "mi", 6: "mi", 7: "mi", 8: "mi", 9: "pa" },
 };
+
+/**
+ * The per-agent assessment matrix, by risk.
+ *
+ * Only ASI01 has been assessed. A risk that is absent here has no per-agent
+ * status at all, and the product must say so: borrowing another risk's cells
+ * would put a rating and an evidence line against a control nobody has looked
+ * at, which is invented compliance evidence. Transcribing a risk's controls
+ * deliberately does not add it here.
+ */
+const MATRICES: Partial<Record<AsiId, Record<string, Cells>>> = {
+  ASI01: ASI01_CELLS,
+};
+
+/** True when a risk has a real per-agent assessment matrix behind it. */
+export function hasAssessments(risk: AsiId): boolean {
+  return MATRICES[risk] !== undefined;
+}
 
 const EXPAND: Record<"in" | "pa" | "mi" | "na", ControlStatus> = {
   in: "in-place",
@@ -143,10 +161,16 @@ function agentIndex(agentId: string): number {
   return AGENTS.findIndex((a) => a.id === agentId);
 }
 
-/** Every control assessment for one agent against one risk. */
+/**
+ * Every control assessment for one agent against one risk.
+ *
+ * Empty when the risk has no assessment matrix, even where its controls have
+ * been transcribed — a published control catalogue is not a statement about
+ * this agent.
+ */
 export function assessmentsFor(agentId: string, risk: AsiId = "ASI01"): ControlAssessment[] {
   const detail = riskDetail(risk);
-  const cells = RAW[agentId];
+  const cells = MATRICES[risk]?.[agentId];
   if (!detail || !cells) return [];
   const idx = agentIndex(agentId);
   return detail.controls.map((control) => {
@@ -168,7 +192,11 @@ export function assessmentsFor(agentId: string, risk: AsiId = "ASI01"): ControlA
   });
 }
 
-/** The risk score for one agent, rolled up from its control assessments. */
+/**
+ * The risk score for one agent, rolled up from its control assessments.
+ * Null when there is nothing to roll up, so a caller cannot mistake the
+ * absence of an assessment for a score of zero.
+ */
 export function rollUpScore(agentId: string, risk: AsiId = "ASI01"): number | null {
   const scored = assessmentsFor(agentId, risk)
     .map((a) => STATUS_WEIGHT[a.status])
@@ -189,7 +217,13 @@ export interface ControlCoverage {
   applicable: number;
 }
 
-export function controlCoverage(controlN: number, risk: AsiId = "ASI01"): ControlCoverage {
+/**
+ * How the estate stands against one control, or null when the risk has no
+ * per-agent assessment. Zeroed counts would read as "nobody has this control",
+ * which is a finding rather than the silence it actually is.
+ */
+export function controlCoverage(controlN: number, risk: AsiId = "ASI01"): ControlCoverage | null {
+  if (!hasAssessments(risk)) return null;
   let inPlace = 0, partial = 0, missing = 0, notApplicable = 0;
   for (const agent of AGENTS) {
     const cell = assessmentsFor(agent.id, risk).find((a) => a.controlN === controlN);
