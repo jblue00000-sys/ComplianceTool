@@ -173,10 +173,10 @@ function RiskCard({
             {risk.compliantMeans}
           </p>
 
-          {detail && hasAssessments(id) ? (
+          {detail && hasAssessments(id) && DETAIL_TAB[id] ? (
             <button
               type="button"
-              onClick={() => setTab("asi01")}
+              onClick={() => setTab(DETAIL_TAB[id]!)}
               className="mt-3.5 rounded-[10px] bg-(--color-accent) px-3.5 py-2 text-[12.5px] font-bold text-[#06101d]"
             >
               See the {detail.controls.length} controls behind this score →
