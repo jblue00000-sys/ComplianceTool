@@ -50,22 +50,37 @@ export function isTranscribed(id: AsiId): boolean {
 }
 
 /**
- * How many controls and scenarios each risk publishes, taken from the standard.
- * Used to show what is left to transcribe.
+ * What the standard publishes for each risk, from the stubs. Used for the
+ * risks that have not been transcribed yet, and asserted against the arrays
+ * for the ones that have.
+ */
+export const PUBLISHED_COUNTS: Readonly<
+  Partial<Record<AsiId, { controls: number; scenarios: number }>>
+> = {
+  ASI02: ASI02_PUBLISHED,
+  ASI03: ASI03_PUBLISHED,
+  ASI04: ASI04_PUBLISHED,
+  ASI05: ASI05_PUBLISHED,
+  ASI06: ASI06_PUBLISHED,
+  ASI07: ASI07_PUBLISHED,
+  ASI08: ASI08_PUBLISHED,
+  ASI09: ASI09_PUBLISHED,
+  ASI10: ASI10_PUBLISHED,
+};
+
+/**
+ * How many controls and scenarios each risk publishes. A transcribed risk
+ * reports what it actually carries, so the coverage table can never disagree
+ * with the detail surfaces; the rest fall back to the published count.
  */
 export const RISK_COVERAGE: ReadonlyArray<{
   id: AsiId;
   controls: number;
   scenarios: number;
-}> = [
-  { id: "ASI01", controls: ASI01.controls.length, scenarios: ASI01.scenarios.length },
-  { id: "ASI02", ...ASI02_PUBLISHED },
-  { id: "ASI03", ...ASI03_PUBLISHED },
-  { id: "ASI04", ...ASI04_PUBLISHED },
-  { id: "ASI05", ...ASI05_PUBLISHED },
-  { id: "ASI06", ...ASI06_PUBLISHED },
-  { id: "ASI07", ...ASI07_PUBLISHED },
-  { id: "ASI08", ...ASI08_PUBLISHED },
-  { id: "ASI09", ...ASI09_PUBLISHED },
-  { id: "ASI10", ...ASI10_PUBLISHED },
-];
+}> = (Object.keys(REGISTRY) as AsiId[]).map((id) => {
+  const detail = REGISTRY[id];
+  if (detail) {
+    return { id, controls: detail.controls.length, scenarios: detail.scenarios.length };
+  }
+  return { id, ...PUBLISHED_COUNTS[id]! };
+});

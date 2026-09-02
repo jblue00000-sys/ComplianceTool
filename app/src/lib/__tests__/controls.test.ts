@@ -7,7 +7,12 @@ import {
   rollUpScore,
 } from "../controls";
 import { AGENTS } from "../data";
-import { riskDetail } from "../mitigations";
+import {
+  isTranscribed,
+  PUBLISHED_COUNTS,
+  RISK_COVERAGE,
+  riskDetail,
+} from "../mitigations";
 import type { AsiId } from "../types";
 
 const CONTROL_COUNT = 9;
@@ -114,14 +119,19 @@ describe("remediationTasks", () => {
 });
 
 describe("published mitigation content", () => {
-  const detail = riskDetail("ASI01");
+  const transcribed = RISK_COVERAGE.map((r) => r.id).filter(isTranscribed);
 
-  it("transcribes all nine ASI01 controls", () => {
-    expect(detail?.controls).toHaveLength(CONTROL_COUNT);
+  it("has transcribed more than the template risk", () => {
+    expect(transcribed).toContain("ASI01");
+    expect(transcribed.length).toBeGreaterThan(1);
   });
 
-  it("gives every remediation step a worked example", () => {
-    for (const control of detail!.controls) {
+  it("transcribes all nine ASI01 controls", () => {
+    expect(riskDetail("ASI01")?.controls).toHaveLength(CONTROL_COUNT);
+  });
+
+  it.each(transcribed)("%s gives every remediation step a worked example", (id) => {
+    for (const control of riskDetail(id)!.controls) {
       expect(control.steps.length).toBeGreaterThan(0);
       for (const step of control.steps) {
         expect(step.text.length).toBeGreaterThan(0);
@@ -130,11 +140,43 @@ describe("published mitigation content", () => {
     }
   });
 
-  it("quotes the standard's own wording for each control", () => {
-    for (const control of detail!.controls) {
+  it.each(transcribed)("%s quotes the standard's own wording for each control", (id) => {
+    for (const control of riskDetail(id)!.controls) {
       expect(control.guideline.length).toBeGreaterThan(60);
       expect(control.verification.length).toBeGreaterThan(20);
     }
+  });
+
+  it.each(transcribed)("%s numbers its controls 1..n in published order", (id) => {
+    const ns = riskDetail(id)!.controls.map((c) => c.n);
+    expect(ns).toEqual(ns.map((_, i) => i + 1));
+  });
+
+  it.each(transcribed)("%s only cites controls of its own risk in brokenBy", (id) => {
+    const detail = riskDetail(id)!;
+    const known = new Set(detail.controls.map((c) => c.n));
+    expect(detail.scenarios.length).toBeGreaterThan(0);
+    for (const scenario of detail.scenarios) {
+      expect(scenario.brokenBy.length).toBeGreaterThan(0);
+      for (const n of scenario.brokenBy) {
+        expect(known.has(n)).toBe(true);
+      }
+    }
+  });
+
+  it.each(transcribed)("%s carries exactly what the standard publishes", (id) => {
+    const published = PUBLISHED_COUNTS[id];
+    if (!published) return;
+    const detail = riskDetail(id)!;
+    expect(detail.controls).toHaveLength(published.controls);
+    expect(detail.scenarios).toHaveLength(published.scenarios);
+  });
+
+  it.each(transcribed)("%s reports its real counts in the coverage table", (id) => {
+    const row = RISK_COVERAGE.find((r) => r.id === id)!;
+    const detail = riskDetail(id)!;
+    expect(row.controls).toBe(detail.controls.length);
+    expect(row.scenarios).toBe(detail.scenarios.length);
   });
 });
 
