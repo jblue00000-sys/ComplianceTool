@@ -9,9 +9,9 @@ We require this to reduce the maintainer's burden of reviewing and merging contr
 `no-mistakes` puts a local git proxy in front of your real remote.
 Pushing through it runs an AI-driven review/test/lint pipeline in an isolated worktree, forwards the push upstream only after every check passes, and opens a clean PR automatically.
 
-Upstream firstmate enforces this with a `Require no-mistakes` GitHub Actions check that fails when a PR body is missing the deterministic signature no-mistakes writes.
-That workflow is not tracked in this repository, whose only workflow checks the app under `app/`, so the requirement here is honoured by contributors rather than enforced automatically.
-PRs without the signature will not be reviewed or merged.
+A GitHub Actions check (`Require no-mistakes`) runs on PRs targeting `main` and fails if the body is missing the deterministic signature that no-mistakes writes.
+It evaluates every PR opening and body edit independently, so a later edit cannot replace an earlier pending compliance check.
+GitHub Actions and Dependabot are exempt so their automation keeps working, but regular contributor PRs without the signature will not be reviewed or merged.
 
 ## Workflow
 
@@ -58,7 +58,7 @@ See the [no-mistakes quick start](https://kunchenguid.github.io/no-mistakes/star
 ## Development
 
 Tracked changes to firstmate itself - `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `.tasks.toml`, `.github/workflows/`, `bin/`, `.agents/skills/`, `doctrine/`, and `skills/` - ship through the `no-mistakes` pipeline on a feature branch and require an explicit merge approval.
-That includes documentation-only changes here: this repository's standing rigor is one the executed-words fast path in tracked [`doctrine/captain-principles.md`](doctrine/captain-principles.md) never lowers, and a PR raised outside the pipeline is rejected on review.
+That includes documentation-only changes here: this repository's standing rigor is one the executed-words fast path in tracked [`doctrine/captain-principles.md`](doctrine/captain-principles.md) never lowers, and the `Require no-mistakes` check rejects any PR raised outside the pipeline.
 Before making any such change, load the agent-only `firstmate-coding-guidelines` skill (`.agents/skills/firstmate-coding-guidelines/SKILL.md`).
 It has the knowledge-placement rules that keep `AGENTS.md` from regrowing after each diet pass.
 There is no reliable way for `bin/fm-brief.sh`'s scaffold to detect that a task's repo is firstmate itself, so firstmate adds this skill's load line to firstmate-repo briefs by hand.
@@ -67,7 +67,7 @@ When supervising live crewmates, keep firstmate's own long validation or build c
 Crewmate validation follows the installed no-mistakes version's SKILL.md and live `axi` help instead of duplicating gate mechanics in firstmate docs.
 Firstmate's wrapper still matters: crewmates route every `ask-user` finding to firstmate, which applies the authority contract in `AGENTS.md`, and crewmates avoid `--yes` because it would bypass that check and any required captain escalation.
 Local `.no-mistakes/` state and test evidence stay out of this repo; `.no-mistakes.yaml` keeps evidence in a temp directory and pins the gate's lint command to `bin/fm-lint.sh`, matching the Linux CI lint job.
-Local no-mistakes Test is intent-targeted and must not re-run every `tests/*.test.sh`; upstream firstmate's own `ci.yml` owns the broad behavior suite plus platform-specific compatibility lanes, and this repository does not carry that workflow.
+Local no-mistakes Test is intent-targeted and must not re-run every `tests/*.test.sh`; `.github/workflows/ci.yml` owns the broad behavior suite plus platform-specific compatibility lanes.
 That is firstmate-specific; do not commit `.no-mistakes/evidence/` here even when another no-mistakes-managed target project keeps committed PR evidence.
 
 Check and test the toolbelt before pushing:
@@ -96,7 +96,7 @@ Its header and `--help` own the flags, family labels, lanes, and changed-file ma
 Portable shard balance evidence lives in `docs/fm-test-portable-shards.md`.
 Local no-mistakes Test stays intent-targeted and must not wire `commands.test` to `--all` or a `tests/*.test.sh` walk.
 Family selection is the ordinary local path; `--all` is deliberate full regression only.
-Upstream firstmate CI owns broad regression across required portable parallel shards, the portable serial lane's separate-runner shards, the Herdr lane, lint, invariants, the coverage guard, and stock macOS Bash compatibility; the only workflow tracked here is [`.github/workflows/app.yml`](.github/workflows/app.yml), which type checks, lints, tests and builds the app under `app/`.
+CI owns broad regression across required portable parallel shards, the portable serial lane's separate-runner shards, the Herdr lane, lint, invariants, the coverage guard, and stock macOS Bash compatibility in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 Use `bin/fm-test-run.sh --list-lanes` for exact lane names and `--help` for `--jobs` rules and required gate-skip flags when reproducing a lane locally.
 Discover tests by listing `tests/*.test.sh`: each is a self-contained bash script named `<subject>.test.sh`, and its header comment describes what it covers, so pass one to `bin/fm-test-run.sh` to focus on a subject with canonical timing output.
 Tests that need a real optional backend or an explicit opt-in (real herdr/zellij/cmux smoke tests, the live Pi regression) skip themselves and print the tool or environment gate needed to enable them, so the portable suite remains safe on machines without those tools.
