@@ -128,8 +128,8 @@ See [`trace-context.md`](trace-context.md) for carrier semantics, supported rout
 
 ## Gate defaults (.no-mistakes.yaml)
 
-The tracked `.no-mistakes.yaml` keeps test evidence outside the repo and pins `commands.lint` to `bin/fm-lint.sh` so the gate runs the repository's one lint definition.
-That evidence policy is specific to the firstmate repo: target projects may legitimately commit `.no-mistakes/evidence/` from their own no-mistakes pipeline, but firstmate keeps `.no-mistakes/` local, gitignored, and never committed here.
+The tracked `.no-mistakes.yaml` keeps test evidence outside the repo and pins `commands.lint` to `bin/fm-lint.sh` so local lint matches CI.
+That evidence policy is specific to the firstmate repo: target projects may legitimately commit `.no-mistakes/evidence/` from their own no-mistakes pipeline, but firstmate keeps `.no-mistakes/` local and CI rejects tracked entries under that path.
 It does not set `commands.test` to a complete `tests/*.test.sh` walk.
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for the firstmate-specific local test policy and entry points.
 Portable shard evidence and coverage rules are in [fm-test-portable-shards.md](fm-test-portable-shards.md); [herdr-backend.md](herdr-backend.md#destructive-lab-safety) owns the real-Herdr lane's isolation boundary, and [runtime-backends.md](verification/runtime-backends.md#herdr) owns active evidence.
@@ -180,7 +180,7 @@ Malformed, multi-line, symlinked, hardlinked, special, or otherwise unsafe value
 Use `bin/fm-startup-memory-budget.sh read` to validate and print the effective value, or `bin/fm-startup-memory-budget.sh report` to account for the three files.
 The report also prints the tracked `doctrine/` files, which share the startup prompt-memory surface but are reported separately and never counted against a home's allowance: the budget governs the local memory a `/stow` pass can curate, and doctrine changes only through the firstmate PR path.
 Excluded is not unbounded: tracked doctrine has its own ceiling of 7500 estimated tokens, reported as `tracked_doctrine_ceiling_tokens` and `tracked_doctrine_status` in the same `within-budget` / `over-budget` vocabulary, so growth no local pass could curate still has one place that calls it too large.
-That ceiling is a repository constant in `bin/fm-startup-memory-budget-lib.sh` rather than a per-home setting, and it is deliberately not settable from a home's gitignored `config/`: doctrine is tracked material that only changes through the branch-and-PR path, so the ceiling belongs where that path reviews it, and `tests/fm-startup-memory-budget.test.sh` fails when the tracked doctrine exceeds it.
+That ceiling is a repository constant in `bin/fm-startup-memory-budget-lib.sh` rather than a per-home setting, and it is deliberately not settable from a home's gitignored `config/`: doctrine is tracked material that only changes through the branch-and-PR path, so the ceiling belongs where that path reviews it, and `tests/fm-startup-memory-budget.test.sh` fails in CI when the tracked doctrine exceeds it.
 It matches the per-home default so there is a single number to remember, and it is a separate budget rather than a shared one because the two halves are curated by different people through different routes.
 When a doctrine file cannot be measured, the count of those files is reported as `tracked_doctrine_unmeasured_files` so a `within-budget` verdict is never read as an all-clear over an incomplete measurement.
 The stable local estimate is `ceil(UTF-8 bytes / 3)` per file, a conservative portable approximation rather than a provider-exact tokenizer.

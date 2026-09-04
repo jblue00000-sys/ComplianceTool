@@ -2,7 +2,6 @@
 
 `bin/fm-test-run.sh` owns portable lane composition and execution.
 `bin/fm-test-isolation-proof.sh` owns the proven-isolated candidate set.
-These lanes no longer have a workflow in this repository: CI here covers `app/` only, so the shard balance below is evidence for local runs and for any lane restored later, and the CI run links are historical.
 
 ## Verification inputs
 
@@ -62,7 +61,7 @@ On [PR 1495](https://github.com/kunchenguid/firstmate/pull/1495), its main step 
 Each shard is still strictly serial in itself, and separate runners mean no two of these stateful scripts ever share a machine, so the split needs no concurrency isolation proof.
 
 `bin/fm-test-run.sh` owns `n` and refuses any lane whose `of<n>` disagrees with it.
-A workflow running these shards must derive the same `n` from `strategy.job-total` rather than a literal, so changing the shard count in either place without the other fails the lane loudly instead of leaving part of the suite unrun.
+`.github/workflows/ci.yml` derives the same `n` from `strategy.job-total` rather than a literal, so changing the shard count in either file without the other fails the lane loudly instead of leaving part of the required suite unrun.
 
 Assignment is longest-processing-time bin packing over per-script duration hints embedded in `bin/fm-test-run.sh`.
 The hints came from that run's `fm-test-timing-portable-serial` artifact on 2026-08-02, where the lane ran 69 scripts in 1143762 ms of serial work.
@@ -97,7 +96,7 @@ It separately verifies that the portable serial CI shards are non-empty, disjoin
 
 Portable shards, each portable serial shard, and the Herdr lane upload runner-generated timing JSON.
 `bin/fm-test-run.sh --aggregate-json` creates the combined summary artifact.
-The exact artifact names and aggregation wiring belong to whichever workflow runs the lanes; no workflow here does.
+`.github/workflows/ci.yml` owns the exact artifact names and aggregation wiring.
 
 ## Local entry points
 
