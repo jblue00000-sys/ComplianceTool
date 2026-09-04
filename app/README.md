@@ -45,7 +45,10 @@ live in `src/lib/scoring.ts` as `PASS_THRESHOLD` and `PARTIAL_THRESHOLD`.
 | Path | Holds |
 | --- | --- |
 | `src/lib/types.ts` | The domain model. |
-| `src/lib/owasp.ts` | The ten risks. Treated as a display layer, so a revision of the standard changes this file alone. |
+| `src/lib/owasp.ts` | The ten risks as the screens name them: title, one-line description, what compliance means. |
+| `src/lib/risks/` | One module per risk, holding the standard's own prevention and mitigation guidelines, the fix guidance for each, and the published attack scenarios. Adding a risk is a change to that risk's file alone. |
+| `src/lib/mitigations.ts` | The index over those modules. A risk not transcribed yet resolves to undefined and the screens say so plainly. |
+| `src/lib/controls.ts` | Where an agent stands against each published control, so a risk score can be challenged cell by cell. |
 | `src/lib/scoring.ts` | Thresholds, bands and every roll-up. Nothing recomputes these locally. |
 | `src/lib/data.ts` | Demonstration register. **Replace this module with real ingestion**; no component reaches for agent data directly. |
 | `src/components/` | One file per surface, plus the shared UI kit, detail drawer and advisor. |
@@ -55,3 +58,9 @@ live in `src/lib/scoring.ts` as `PASS_THRESHOLD` and `PARTIAL_THRESHOLD`.
 Every screen runs on demonstration data for a fictional customer, Northwind
 Group. The ingestion layer — guided self-assessment, agent configuration,
 identity and cloud connectors, and live activity telemetry — is not built yet.
+
+The standard's control detail is being transcribed one risk at a time, and
+per-agent control assessments are wired up separately in `src/lib/controls.ts`.
+Neither is complete for all ten risks, so the screens state which risks carry
+transcribed detail and which carry a per-agent assessment rather than implying
+every score is control-derived.
