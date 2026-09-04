@@ -8,6 +8,9 @@ import {
 } from "../controls";
 import { AGENTS } from "../data";
 import { isTranscribed, RISK_COVERAGE, riskDetail } from "../mitigations";
+import { ASI05_PUBLISHED } from "../risks/asi05";
+import { ASI06_PUBLISHED } from "../risks/asi06";
+import { ASI07_PUBLISHED } from "../risks/asi07";
 import type { AsiId } from "../types";
 
 const CONTROL_COUNT = 9;
@@ -190,11 +193,14 @@ describe("risks with no assessment matrix", () => {
 describe("what each transcribed risk publishes", () => {
   const transcribed = RISK_COVERAGE.map((r) => r.id).filter(isTranscribed);
 
-  it.each(transcribed)("%s reports its real counts in the coverage table", (id) => {
-    const row = RISK_COVERAGE.find((r) => r.id === id)!;
+  it.each([
+    ["ASI05", ASI05_PUBLISHED],
+    ["ASI06", ASI06_PUBLISHED],
+    ["ASI07", ASI07_PUBLISHED],
+  ] as const)("%s carries exactly what the standard publishes", (id, published) => {
     const detail = riskDetail(id)!;
-    expect(detail.controls).toHaveLength(row.controls);
-    expect(detail.scenarios).toHaveLength(row.scenarios);
+    expect(detail.controls).toHaveLength(published.controls);
+    expect(detail.scenarios).toHaveLength(published.scenarios);
   });
 
   it.each(transcribed)("%s numbers its controls 1..n in published order", (id) => {

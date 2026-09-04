@@ -183,9 +183,9 @@ function RiskCard({
             </button>
           ) : detail ? (
             <p className="mt-3.5 text-[12.3px] text-(--color-dim)">
-              The {detail.controls.length} controls the standard asks for are transcribed, with
-              how to close each one. No agent has been assessed against them yet, so this score
-              is a declared posture rather than a roll-up of those controls.
+              The {detail.controls.length} controls the standard asks for are transcribed. No agent
+              has been assessed against them yet, so this score is a declared posture rather than a
+              roll-up of those controls.
             </p>
           ) : (
             <p className="mt-3.5 text-[12.3px] text-(--color-dim)">
