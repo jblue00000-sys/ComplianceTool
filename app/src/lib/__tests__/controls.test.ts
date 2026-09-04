@@ -17,6 +17,11 @@ import type { AsiId } from "../types";
 
 const CONTROL_COUNT = 9;
 
+/** Sentences are runs of text closed by a full stop, question mark or bang. */
+function sentenceCount(text: string): number {
+  return text.split(/[.!?]+(?:\s|$)/).filter((part) => part.trim().length > 0).length;
+}
+
 describe("assessmentsFor", () => {
   it("returns one assessment per published control for every agent", () => {
     for (const agent of AGENTS) {
@@ -130,15 +135,30 @@ describe("published mitigation content", () => {
     expect(riskDetail("ASI01")?.controls).toHaveLength(CONTROL_COUNT);
   });
 
-  it.each(transcribed)("%s gives every remediation step a worked example", (id) => {
+  it.each(transcribed)("%s closes every control in three or four steps", (id) => {
     for (const control of riskDetail(id)!.controls) {
-      expect(control.steps.length).toBeGreaterThan(0);
+      expect(control.steps.length).toBeGreaterThanOrEqual(3);
+      expect(control.steps.length).toBeLessThanOrEqual(4);
       for (const step of control.steps) {
         expect(step.text.length).toBeGreaterThan(0);
         expect(step.example.length).toBeGreaterThan(60);
       }
     }
   });
+
+  // ASI01 is the template, transcribed before the two-sentence rule was
+  // written down, and nine of its examples are a single long sentence. Every
+  // risk transcribed against the rule is held to it.
+  it.each(transcribed.filter((id) => id !== "ASI01"))(
+    "%s works every example through in at least two sentences",
+    (id) => {
+      for (const control of riskDetail(id)!.controls) {
+        for (const step of control.steps) {
+          expect(sentenceCount(step.example)).toBeGreaterThanOrEqual(2);
+        }
+      }
+    },
+  );
 
   it.each(transcribed)("%s quotes the standard's own wording for each control", (id) => {
     for (const control of riskDetail(id)!.controls) {

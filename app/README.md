@@ -21,9 +21,12 @@ npm run dev
 | **Guided Review** | Anyone, no expertise needed | A six-question assessment that needs no integration at all. |
 | **Agent Workforce** | Risk, audit and business owners | Who owns this agent, and when does its access expire? |
 
-OWASP Live opens into a **control detail** view for a risk whose controls have
-been transcribed: the controls the standard asks for, how to close each one, and
-— where the agents have been assessed against them — where each agent stands.
+The controls the standard asks for are transcribed for ASI01–ASI04. In OWASP
+Live, expanding an agent's row against a transcribed risk lists each control's
+number, name and one-line description. The full **control detail** — the
+standard's own guideline wording, the steps that close it with their worked
+examples, effort, team and verification — is rendered only for ASI01, the one
+risk the agents have been assessed against.
 
 An **advisor** is available from every tab. It answers only from the register in
 `src/lib/data.ts` and states the basis for every answer, so no claim it makes is

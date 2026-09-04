@@ -270,6 +270,14 @@ export interface RemediationTask {
   gap: string;
 }
 
+/**
+ * The control per risk that nobody can start yet, because the standard itself
+ * still calls the pattern emerging. ASI01's is the intent capsule.
+ */
+const BLOCKED_CONTROL: Partial<Record<AsiId, number>> = {
+  ASI01: 5,
+};
+
 const DUE_BY_PRIORITY: Record<TaskPriority, string[]> = {
   high: ["12 Sep 2026", "19 Sep 2026", "26 Sep 2026"],
   medium: ["17 Oct 2026", "31 Oct 2026", "14 Nov 2026"],
@@ -280,9 +288,14 @@ const DUE_BY_PRIORITY: Record<TaskPriority, string[]> = {
  * Priority combines how bad the gap is with how much damage the agent could do
  * and how many published attack scenarios the control defends against.
  */
-function priorityFor(agentId: string, controlN: number, status: ControlStatus): TaskPriority {
+function priorityFor(
+  agentId: string,
+  risk: AsiId,
+  controlN: number,
+  status: ControlStatus,
+): TaskPriority {
   const agent = agentById(agentId);
-  const detail = riskDetail("ASI01");
+  const detail = riskDetail(risk);
   let points = status === "missing" ? 2 : 1;
   if (agent?.canMoveMoney) points += 1;
   if (agent && agent.autonomy === "none") points += 1;
@@ -306,7 +319,7 @@ export function remediationTasks(risk: AsiId = "ASI01"): RemediationTask[] {
       if (assessment.status === "in-place" || assessment.status === "not-applicable") continue;
       const control = detail.controls.find((c) => c.n === assessment.controlN);
       if (!control) continue;
-      const priority = priorityFor(agent.id, control.n, assessment.status);
+      const priority = priorityFor(agent.id, risk, control.n, assessment.status);
       const slot = (agentIdx + control.n) % 3;
       tasks.push({
         id: `${agent.id}-${risk.toLowerCase()}-${control.n}`,
@@ -323,7 +336,7 @@ export function remediationTasks(risk: AsiId = "ASI01"): RemediationTask[] {
         state:
           assessment.status === "partial"
             ? "in-progress"
-            : control.n === 5
+            : control.n === BLOCKED_CONTROL[risk]
               ? "blocked"
               : "open",
         due: DUE_BY_PRIORITY[priority][slot],
