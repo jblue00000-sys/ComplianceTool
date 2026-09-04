@@ -1,0 +1,50 @@
+name: App
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - ".github/workflows/app.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/app.yml"
+
+# A newer push to the same branch makes the in-flight run irrelevant.
+concurrency:
+  group: app-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  verify:
+    name: Type check, lint and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
