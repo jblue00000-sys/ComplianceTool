@@ -5,7 +5,6 @@ import { AGENTS, agentById } from "@/lib/data";
 import {
   assessmentsFor,
   controlCoverage,
-  hasAssessments,
   remediationTasks,
   rollUpScore,
   STATUS_BAND,
@@ -424,7 +423,7 @@ function Replication() {
         <tbody>
           {RISK_COVERAGE.map((r) => {
             const transcribed = isTranscribed(r.id);
-            const assessed = transcribed && hasAssessments(r.id);
+            const here = r.id === "ASI01";
             return (
               <tr key={r.id} className={transcribed ? "bg-[rgba(91,157,255,0.07)]" : undefined}>
                 <td className="border-b border-(--color-line) px-3.5 py-2.5">
@@ -434,14 +433,12 @@ function Replication() {
                 <td className="border-b border-(--color-line) px-3.5 py-2.5">{r.scenarios}</td>
                 <td
                   className="border-b border-(--color-line) px-3.5 py-2.5"
-                  style={{
-                    color: assessed ? BAND_COLOR.green : transcribed ? BAND_COLOR.amber : NEUTRAL,
-                  }}
+                  style={{ color: transcribed ? BAND_COLOR.green : NEUTRAL }}
                 >
-                  {assessed
+                  {here
                     ? "Built — you are looking at it"
                     : transcribed
-                      ? "Transcribed — agents not yet assessed against it"
+                      ? "Transcribed — controls and scenarios in the app"
                       : "Same structure, content to transcribe"}
                 </td>
               </tr>
