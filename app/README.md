@@ -45,7 +45,10 @@ live in `src/lib/scoring.ts` as `PASS_THRESHOLD` and `PARTIAL_THRESHOLD`.
 | Path | Holds |
 | --- | --- |
 | `src/lib/types.ts` | The domain model. |
-| `src/lib/owasp.ts` | The ten risks. Treated as a display layer, so a revision of the standard changes this file alone. |
+| `src/lib/owasp.ts` | The ten risks as they are named on screen. A display layer only. |
+| `src/lib/risks/` | One module per risk holding the standard's own prevention and mitigation guidelines, worked fixes and example attack scenarios. A risk is transcribed by editing its own file and nothing else. |
+| `src/lib/mitigations.ts` | The index over those modules. Untranscribed risks say so on screen instead of implying a control-derived score. |
+| `src/lib/controls.ts` | Per-agent status against each published control, and the remediation roll-up built from it. |
 | `src/lib/scoring.ts` | Thresholds, bands and every roll-up. Nothing recomputes these locally. |
 | `src/lib/data.ts` | Demonstration register. **Replace this module with real ingestion**; no component reaches for agent data directly. |
 | `src/components/` | One file per surface, plus the shared UI kit, detail drawer and advisor. |
@@ -55,3 +58,9 @@ live in `src/lib/scoring.ts` as `PASS_THRESHOLD` and `PARTIAL_THRESHOLD`.
 Every screen runs on demonstration data for a fictional customer, Northwind
 Group. The ingestion layer — guided self-assessment, agent configuration,
 identity and cloud connectors, and live activity telemetry — is not built yet.
+
+Control detail is transcribed for ASI01, ASI05, ASI06 and ASI07; the remaining
+six say plainly that their detail is still to come rather than implying a
+control-derived score. Only ASI01 carries per-agent control statuses, so the
+other transcribed risks show the control catalogue and its fixes without a
+per-agent verdict.
