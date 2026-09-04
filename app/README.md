@@ -22,11 +22,12 @@ npm run dev
 | **Agent Workforce** | Risk, audit and business owners | Who owns this agent, and when does its access expire? |
 
 The controls the standard asks for are transcribed for ASI01–ASI04. In OWASP
-Live, expanding an agent's row against a transcribed risk lists each control's
-number, name and one-line description. The full **control detail** — the
-standard's own guideline wording, the steps that close it with their worked
-examples, effort, team and verification — is rendered only for ASI01, the one
-risk the agents have been assessed against.
+Live, expanding an agent's row against a risk nobody has assessed them on lists
+each control's number, name and one-line description; against an assessed risk
+it lists the number, the short label and the evidence behind that agent's
+status. The full **control detail** — the standard's own guideline wording, the
+steps that close it with their worked examples, effort, team and verification —
+is rendered only for ASI01, the one risk the agents have been assessed against.
 
 An **advisor** is available from every tab. It answers only from the register in
 `src/lib/data.ts` and states the basis for every answer, so no claim it makes is

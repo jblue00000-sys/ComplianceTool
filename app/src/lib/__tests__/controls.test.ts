@@ -146,9 +146,12 @@ describe("published mitigation content", () => {
     }
   });
 
-  // ASI01 is the template, transcribed before the two-sentence rule was
-  // written down, and nine of its examples are a single long sentence. Every
-  // risk transcribed against the rule is held to it.
+  // ASI01 is the pre-existing template this task was written against, and its
+  // module is ring-fenced by the task's scope, so it cannot be edited to pass.
+  // Eight of its 35 worked examples are a single sentence: long, specific and
+  // concrete, but short of a two-sentence bar. The guard therefore holds the
+  // newly transcribed risks to the criterion, which is where it is being
+  // enforced for the six lanes still to come.
   it.each(transcribed.filter((id) => id !== "ASI01"))(
     "%s works every example through in at least two sentences",
     (id) => {
